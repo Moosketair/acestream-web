@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0b1020">
+<title>AceStream Web</title>
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1.6.13"></script>
+<style>
+:root{color-scheme:dark;--bg:#0b1020;--panel:#151e30;--line:#29374d;--text:#f1f5fb;--muted:#a7b7ce;--blue:#59a8ff;--green:#39d392;--red:#ff818e}
+*{box-sizing:border-box}
+body{margin:0;background:radial-gradient(900px 450px at 80% -10%,#244067,transparent 70%),var(--bg);color:var(--text);font:16px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:1120px;padding:34px 22px 64px;margin:auto}
+header{display:flex;align-items:center;justify-content:space-between;gap:15px;flex-wrap:wrap;margin-bottom:27px}
+.brand{display:flex;align-items:center;gap:14px}
+.logo{height:52px;width:52px;display:grid;place-items:center;border-radius:16px;background:linear-gradient(145deg,#096247,#27c68c);font-size:25px;box-shadow:0 9px 22px #0004}
+h1{margin:0;font-size:clamp(1.45rem,3vw,2.05rem);letter-spacing:-.03em}
+.subtitle{margin:0;color:var(--muted);font-size:.9rem}
+.badge{border:1px solid var(--line);border-radius:99px;background:#172841;padding:7px 13px;color:#c2d7f5;font-size:.8rem}
+.card{border:1px solid var(--line);border-radius:20px;background:var(--panel);padding:24px;box-shadow:0 20px 60px #0002}
+label{display:block;font-weight:650;margin-bottom:10px}
+.controls{display:flex;gap:10px}
+input{flex:1;min-width:0;border:1px solid #42506b;border-radius:12px;background:#0c1424;color:var(--text);padding:15px 16px;font:inherit;outline:none}
+input:focus{border-color:var(--blue);box-shadow:0 0 0 3px #59a8ff25}
+button{border:0;border-radius:12px;font:inherit;font-weight:750;padding:13px 20px;cursor:pointer;transition:opacity .15s}
+button:disabled{opacity:.4;cursor:wait}
+.primary{background:var(--blue);color:#08172b}
+.secondary{background:#2b3549;color:#f3f6ff}
+.secondary:hover{background:#38455e}
+.hint{color:var(--muted);font-size:.82rem;margin:11px 0 0}
+.player-card{margin-top:22px}
+.bar{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:16px}
+.bar h2{font-size:1.07rem;margin:0}
+.status{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:50px;padding:6px 11px;color:var(--muted);font-size:.81rem}
+.status:before{content:"";width:8px;height:8px;border-radius:50%;background:#8a9bb7}
+.status[data-type="ready"]:before{background:var(--green)}
+.status[data-type="error"]:before{background:var(--red)}
+video{display:block;width:100%;aspect-ratio:16/9;max-height:70vh;background:#050a13;border-radius:12px;object-fit:contain}
+#message{color:var(--muted);margin:16px 0 0;min-height:1.5em;font-size:.9rem;overflow-wrap:anywhere}
+#message.error{color:var(--red)}
+.foot{margin-top:20px;color:#8497b3;font-size:.78rem}
+code{background:#091320;border:1px solid #263449;border-radius:5px;padding:2px 5px}
+@media(max-width:650px){main{padding:20px 12px 45px}.card{padding:15px;border-radius:15px}.controls{flex-wrap:wrap}.controls input{flex-basis:100%}.controls button{flex:1;padding:12px}.badge{font-size:.72rem}}
+</style>
+</head>
+<body>
+<main>
+<header>
+ <div class="brand"><div class="logo" aria-hidden="true">▶</div><div><h1>AceStream Web</h1><p class="subtitle">Lecteur Ace Stream dans votre navigateur</p></div></div>
+ <div class="badge">🔒 Moteur via Proton VPN</div>
+</header>
+<section class="card">
+ <label for="infohash">Lien ou identifiant Ace Stream</label>
+ <div class="controls">
+  <input id="infohash" aria-label="Identifiant Ace Stream" placeholder="Hash, acestream:// ou URL Ace Stream" autocomplete="off" spellcheck="false">
+  <button class="primary" id="start">▶ Lire</button>
+  <button class="secondary" id="stop">■ Arrêter</button>
+ </div>
+ <p class="hint">Formats acceptés : hash de 40 caractères, lien <code>acestream://</code> ou URL contenant <code>infohash</code>, <code>id</code> ou <code>content_id</code>.</p>
+</section>
+<section class="card player-card">
+ <div class="bar"><h2>Lecture vidéo</h2><span id="status" class="status" data-type="idle">En attente</span></div>
+ <video id="video" controls playsinline preload="none"></video>
+ <p id="message" role="status" aria-live="polite">Saisissez un identifiant, puis cliquez sur Lire.</p>
+</section>
+<p class="foot">Interface accessible sur le réseau local. Le badge VPN indique la configuration prévue, pas l'état réel de la connexion. N'exposez pas cette interface directement à Internet.</p>
+</main>
+<script>
+"use strict";
+const input=document.querySelector("#infohash");
+const startBtn=document.querySelector("#start");
+const stopBtn=document.querySelector("#stop");
+const statusEl=document.querySelector("#status");
+const messageEl=document.querySelector("#message");
+const video=document.querySelector("#video");
+let hls=null;
+let streamId=null;
+let busy=false;
+let retryCount=0;
+function status(text,type="idle",message=""){
+ statusEl.textContent=text;statusEl.dataset.type=type;
+ messageEl.textContent=message||text;messageEl.classList.toggle("error",type==="error");
+}
+function setBusy(value){busy=value;startBtn.disabled=value;stopBtn.disabled=value}
+function resetPlayer(){
+ if(hls){hls.destroy();hls=null}
+ video.pause();video.removeAttribute("src");video.load();retryCount=0;
+}
+async function api(path,payload){
+ const response=await fetch(path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
+ let data;try{data=await response.json()}catch{throw new Error("Réponse invalide du serveur")}
+ if(!response.ok)throw new Error(data.error||"Erreur de communication");
+ if(data.ffmpeg)console.error("FFmpeg:",data.ffmpeg);
+ return data;
+}
+async function stopStream(){
+ if(busy)return;
+ setBusy(true);status("Arrêt en cours...");
+ resetPlayer();
+ try{
+  if(streamId){await api("/api/stop",{stream_id:streamId});streamId=null}
+  status("Arrêté","idle","Le lecteur est arrêté.");
+ }catch(e){status("Erreur","error",e.message)}
+ finally{setBusy(false)}
+}
+function showVideo(playlist){
+ if(window.Hls&&Hls.isSupported()){
+  hls=new Hls({backBufferLength:30,maxBufferLength:30,liveSyncDurationCount:3,liveMaxSyncPlaybackRate:1.5});
+  hls.on(Hls.Events.MANIFEST_PARSED,()=>{
+   status("Prêt","ready","Flux chargé. Lecture en cours ou disponible avec le bouton du lecteur.");
+   video.play().catch(()=>status("Prêt","ready","Cliquez sur ▶ dans le lecteur pour lancer la vidéo."));
+  });
+  hls.on(Hls.Events.ERROR,(_,data)=>{
+   if(!data.fatal)return;
+   if(retryCount++>5){status("Erreur HLS","error",data.details||"Lecture impossible");return}
+   if(data.type===Hls.ErrorTypes.NETWORK_ERROR){status("Reconnexion...");hls.startLoad()}
+   else if(data.type===Hls.ErrorTypes.MEDIA_ERROR){status("Récupération du lecteur...");hls.recoverMediaError()}
+   else status("Erreur HLS","error",data.details||"Flux non pris en charge");
+  });
+  hls.loadSource(playlist);hls.attachMedia(video);
+ }else if(video.canPlayType("application/vnd.apple.mpegurl")){
+  video.src=playlist;
+  video.addEventListener("loadedmetadata",()=>{status("Prêt","ready");video.play().catch(()=>status("Prêt","ready","Cliquez sur ▶ pour lancer la vidéo."))},{once:true});
+ }else throw new Error("Ce navigateur ne prend pas en charge la lecture HLS.");
+}
+async function startStream(){
+ if(busy)return;
+ const value=input.value.trim();
+ if(!value){status("Identifiant requis","error","Collez un hash ou un lien Ace Stream.");input.focus();return}
+ setBusy(true);resetPlayer();status("Connexion...","idle","Connexion au moteur Ace Stream, puis préparation du flux HLS...");
+ try{
+  if(streamId){await api("/api/stop",{stream_id:streamId});streamId=null}
+  const data=await api("/api/start",{infohash:value});
+  streamId=data.stream_id;
+  status("Chargement...","idle","La playlist est prête. Initialisation du lecteur...");
+  showVideo(data.playlist);
+ }catch(e){status("Erreur","error",e.message)}
+ finally{setBusy(false)}
+}
+startBtn.addEventListener("click",startStream);
+stopBtn.addEventListener("click",stopStream);
+input.addEventListener("keydown",e=>{if(e.key==="Enter")startStream()});
+window.addEventListener("pagehide",()=>{if(streamId)navigator.sendBeacon?.("/api/stop",new Blob([JSON.stringify({stream_id:streamId})],{type:"application/json"}))});
+</script>
+</body>
+</html>
