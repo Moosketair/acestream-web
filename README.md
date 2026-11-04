@@ -1,4 +1,4 @@
-# AceStream Web 0.3.0 — Tableau de bord Docker
+# AceStream Web 0.3.1 — Tableau de bord Docker
 
 Interface Web **auto-hébergée** pour consulter et lire des flux Ace Stream autorisés, avec interface responsive, comptes utilisateurs, favoris privés, recherche et monitoring Gluetun/Proton VPN.
 
@@ -60,10 +60,19 @@ Les requêtes sortantes faites **par l'interface Web** (par exemple le télécha
 - Connexion, première initialisation sécurisée, changement de mot de passe, rôles `admin` / `user` et administration des comptes.
 - Favoris **propres à chaque compte** : nom, hash, groupe et notes ; création, édition, suppression.
 - Historique de lecture par compte.
-- **Recherche multi-sources** : choix `Toutes les sources`, `API Ace Stream` (moteur P2P derrière Gluetun) ou `search-ace.stream` (playlist publique mise en cache **20 minutes**). L'API est interrogée côté serveur, avec prise en charge du nouveau `/search` et de l'ancien `/server/api` lorsqu'ils sont proposés par la version du moteur ; le jeton de l'ancien endpoint n'est jamais transmis au navigateur. Les résultats sont dédoublonnés par identifiant et peuvent inclure le statut de disponibilité estimé par le moteur. Une source indisponible n'empêche pas l'autre de répondre. Le téléchargement de la playlist par AceStream Web **ne passe pas par Proton VPN**. Les résultats ne garantissent pas qu'un flux fonctionne, et la recherche playlist ne couvre pas forcément tous les résultats du site Web.
+- **Recherche multi-sources corrigée (0.3.1)** : par défaut, la recherche utilise directement l'index du site search-ace.stream via son endpoint JSON fixe `https://search-ace.stream/search?query=...` (côté serveur Web, hors VPN). Cela permet d'obtenir les événements récents affichés sur le site, à la différence de l'index P2P Ace Stream. Le menu propose `Recherche du site (événements)`, `Toutes les sources`, `Index du moteur (P2P)` et `Playlist du site`. L'index moteur interroge `/search` et l'ancien `/server/api` via Gluetun ; la playlist M3U du site reste mise en cache pendant **20 minutes**. Les résultats sont dédoublonnés par identifiant lorsque plusieurs sources sont sélectionnées. L'endpoint du site est fixe, les redirections refusées, la taille de réponse limitée à 256 Ko et les identifiants de flux validés avant affichage. Si une source échoue, les autres restent utilisables. Les résultats n'assurent pas que la diffusion est fonctionnelle.
 - Monitoring à partir des API Gluetun (`/v1/vpn/status`, `/v1/publicip/ip`) et Ace Stream (`get_version`). Les valeurs non disponibles sont affichées comme telles — aucun débit ou pays fictif.
 - Lecture HLS via FFmpeg ; autorisations sur chaque playlist et chaque segment.
 - Hash brut, URI `acestream://` et liens `infohash`, `id`, `content_id`.
+
+### Source de recherche et test rapide
+
+- Pour retrouver **les mêmes événements récents que sur le site**, choisir **Recherche du site (événements)** (sélectionné par défaut). Par exemple, « rennes » peut renvoyer des variantes de diffusion que l'index du moteur ne connaît pas.
+- « Index du moteur (P2P) » consulte un **autre catalogue**. Un résultat vide n'indique pas une erreur de l'application ni l'absence de résultat sur search-ace.stream.
+- « Playlist du site » consulte l'export M3U, qui peut contenir une sélection différente de la recherche en direct.
+- Les requêtes vers search-ace.stream partent du conteneur AceStream Web et utilisent l'adresse IP publique de **ton serveur**, pas celle du VPN. Ce choix est cohérent avec l'interface Web laissée hors VPN.
+- Pour vérifier la source dans le navigateur, après connexion : ouvrir `/api/search?source=site&q=rennes`. Si le résultat est un `503`, la recherche externe est inaccessible depuis le conteneur ou a changé de format.
+- Cette fonctionnalité interroge une API publique de site tiers non contractuelle. Le site peut changer son endpoint, imposer des limitations ou bloquer l'accès automatisé.
 
 ### PiP Android : prérequis et limites
 
