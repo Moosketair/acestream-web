@@ -99,3 +99,89 @@ class PlaylistSearch:
         matched = [item for item in self._cache
                    if query in normalize(item["name"]) or query in normalize(item["category"])]
         return matched[:limit], len(matched), self.error
+
+
+class EngineSearch:
+    """Query the VPN-protected Ace Stream Engine search API (server-side only).
+
+    The modern /search endpoint is preferred. Some older engines expose
+    /server/api?method=search with an access token. Tokens never reach browsers.
+    """
+
+    def __init__(self, engine_url):
+        self.engine_url = engine_url.rstrip("/")
+
+    @staticmethod
+    def _parse(payload, limit):
+        if not isinstance(payload, dict) or payload.get("error"):
+            raise ValueError("Réponse d'API Ace Stream invalide")
+        result = payload.get("result")
+        if not isinstance(result, dict) or not isinstance(result.get("results"), list):
+            raise ValueError("Résultats de recherche Ace Stream invalides")
+
+        entries, seen = [], set()
+        for group in result["results"]:
+            if not isinstance(group, dict):
+                continue
+            variants = group.get("items")
+            candidates = variants if isinstance(variants, list) else [group]
+            for item in candidates:
+                if not isinstance(item, dict):
+                    continue
+                infohash = item.get("infohash")
+                if not isinstance(infohash, str) or not HASH.fullmatch(infohash):
+                    continue
+                content_id = infohash.lower()
+                if content_id in seen:
+                    continue
+                seen.add(content_id)
+                name = item.get("name") or group.get("name") or "Sans titre"
+                categories = item.get("categories") or group.get("categories") or []
+                category = categories[0] if isinstance(categories, list) and categories else "Divers"
+                entry = {"name": str(name)[:180], "category": str(category)[:80],
+                         "content_id": content_id, "source": "API Ace Stream"}
+                status = item.get("status")
+                if isinstance(status, int) and not isinstance(status, bool) and status in (1, 2):
+                    entry["status"] = status
+                availability = item.get("availability")
+                if isinstance(availability, (int, float)) and not isinstance(availability, bool) and 0 <= availability <= 1:
+                    entry["availability"] = round(float(availability), 2)
+                bitrate = item.get("bitrate")
+                if isinstance(bitrate, (int, float)) and not isinstance(bitrate, bool) and bitrate > 0:
+                    entry["bitrate"] = int(bitrate)
+                entries.append(entry)
+                if len(entries) >= limit:
+                    return entries, len(entries)
+        return entries, len(entries)
+
+    def _modern_search(self, query, limit):
+        response = requests.get(self.engine_url + "/search",
+                                params={"query": query, "page": 0, "page_size": limit},
+                                timeout=(3, 8))
+        response.raise_for_status()
+        return self._parse(response.json(), limit)
+
+    def _legacy_search(self, query, limit):
+        response = requests.get(self.engine_url + "/server/api",
+                                params={"method": "get_api_access_token"}, timeout=(3, 5))
+        response.raise_for_status()
+        payload = response.json()
+        token = payload.get("result", {}).get("token") if isinstance(payload.get("result"), dict) else None
+        if not isinstance(token, str) or not token:
+            raise ValueError("Token de recherche du moteur indisponible")
+        response = requests.get(self.engine_url + "/server/api",
+                                params={"method": "search", "token": token,
+                                        "query": query, "page": 0, "page_size": limit},
+                                timeout=(3, 8))
+        response.raise_for_status()
+        return self._parse(response.json(), limit)
+
+    def search(self, text, limit=60):
+        limit = min(max(int(limit), 1), 100)
+        try:
+            return (*self._modern_search(text, limit), None)
+        except (requests.RequestException, ValueError, TypeError, KeyError):
+            try:
+                return (*self._legacy_search(text, limit), None)
+            except (requests.RequestException, ValueError, TypeError, KeyError) as exc:
+                raise RuntimeError("Recherche API Ace Stream non disponible sur ce moteur.") from exc
