@@ -178,20 +178,28 @@ async function monitor(showError=false){
 }
 async function search(query){
  query=query.trim();if(query.length<2){toast('Saisissez au moins 2 caractères.',true);return;}
+ const source=$('searchSourceSelect').value;
  $('searchHint').textContent='Recherche en cours…';
- $('searchResults').innerHTML='<div class="empty mini">Recherche dans la playlist…</div>';
- $('searchResults2').innerHTML='<div class="empty mini">Recherche dans la playlist…</div>';
+ $('searchResults').innerHTML='<div class="empty mini">Recherche dans les sources sélectionnées…</div>';
+ $('searchResults2').innerHTML='<div class="empty mini">Recherche dans les sources sélectionnées…</div>';
  try{
-  const data=await api(`/api/search?q=${encodeURIComponent(query)}`);appState.results=data.results;renderSearch(data.results);
-  $('searchHint').textContent=`${data.total} résultat(s) · ${data.results.length} affiché(s) · ${data.source}${data.warning?' · données en cache':''}`;
-  if(data.warning)toast('Source momentanément inaccessible : résultats en cache.',true);
+  const data=await api(`/api/search?q=${encodeURIComponent(query)}&source=${encodeURIComponent(source)}`);
+  appState.results=data.results;renderSearch(data.results);
+  $('searchHint').textContent=`${data.total} résultat(s) · ${data.results.length} affiché(s) · ${data.source}`;
+  $('searchSource').textContent=`SOURCE · ${source==='all'?'TOUTES':source==='engine'?'API ACE STREAM':'PLAYLIST'}`;
+  if(data.warning)toast(data.warning,true);
  }catch(err){appState.results=[];$('searchHint').textContent='Recherche indisponible.';const msg=`<div class="empty mini">${escapeHTML(err.message)}</div>`;$('searchResults').innerHTML=msg;$('searchResults2').innerHTML=msg;toast(err.message,true);}
 }
 function renderSearch(results){
  const ids=new Set(appState.favorites.map(f=>f.content_id));
- const html=results.length?results.map(entry=>`<div class="result-item"><div class="result-symbol">${icons('monitor')}</div><div class="item-body"><strong title="${escapeHTML(entry.name)}">${escapeHTML(entry.name)}</strong><small>${escapeHTML(entry.category||'Divers')} · ${escapeHTML(entry.source||'Playlist publique')}</small></div><div class="item-actions"><button class="tiny-btn star" title="${ids.has(entry.content_id)?'Déjà dans les favoris':'Ajouter aux favoris'}" data-action="star-result" data-id="${entry.content_id}">${icons('star')}</button><button class="tiny-btn play" title="Lire" data-action="play-result" data-id="${entry.content_id}">${icons('play')}</button></div></div>`).join(''):'<div class="empty mini">Aucun résultat trouvé pour cette recherche.</div>';
+ const html=results.length?results.map(entry=>{
+   const availability=entry.status===2?' · Disponible (estimation API)':entry.status===1?' · Disponibilité incertaine':'';
+   return `<div class="result-item"><div class="result-symbol">${icons('monitor')}</div><div class="item-body"><strong title="${escapeHTML(entry.name)}">${escapeHTML(entry.name)}</strong><small>${escapeHTML(entry.category||'Divers')} · ${escapeHTML(entry.source||'Source externe')}${escapeHTML(availability)}</small></div><div class="item-actions"><button class="tiny-btn star" title="${ids.has(entry.content_id)?'Déjà dans les favoris':'Ajouter aux favoris'}" data-action="star-result" data-id="${entry.content_id}">${icons('star')}</button><button class="tiny-btn play" title="Lire" data-action="play-result" data-id="${entry.content_id}">${icons('play')}</button></div></div>`;
+ }).join(''):'<div class="empty mini">Aucun résultat trouvé pour cette recherche.</div>';
  $('searchResults').innerHTML=html;$('searchResults2').innerHTML=html;
 }
+$('searchSourceSelect').addEventListener('change',()=>{$('searchSourceSelect2').value=$('searchSourceSelect').value;});
+$('searchSourceSelect2').addEventListener('change',()=>{$('searchSourceSelect').value=$('searchSourceSelect2').value;});
 $('searchForm').addEventListener('submit',event=>{event.preventDefault();$('searchQuery2').value=$('searchQuery').value;search($('searchQuery').value);});
 $('searchForm2').addEventListener('submit',event=>{event.preventDefault();$('searchQuery').value=$('searchQuery2').value;search($('searchQuery2').value);});
 async function loadFavorites(){try{const data=await api('/api/favorites');appState.favorites=data.favorites;renderFavorites();}catch(err){toast(err.message,true);}}
@@ -250,7 +258,69 @@ async function signOut(){try{
  $('usersList').replaceChildren();$('historyList').replaceChildren();$('searchResults').replaceChildren();$('searchResults2').replaceChildren();$('favoritesList').replaceChildren();$('favoritesFullList').replaceChildren();await bootstrap();
  }catch(err){toast(err.message,true);}}
 $('logoutButton').addEventListener('click',signOut);
-function resetVideo(){const video=$('video');hideVideoLoading();if(appState.hls){appState.hls.destroy();appState.hls=null;}video.pause();video.removeAttribute('src');video.load();$('videoPlaceholder').hidden=false;}
+/* Picture-in-Picture: browsers can block automatic requests without user activation.
+   MediaSession lets compatible browsers invoke PiP when the page loses focus. */
+function canUsePiP(){
+ const video=$('video');
+ return typeof video.requestPictureInPicture==='function' &&
+        document.pictureInPictureEnabled!==false;
+}
+function requestVideoPiP(silent=false){
+ const video=$('video');
+ if(!appState.stream || video.paused || video.ended || video.readyState<2){
+   if(!silent)toast('Lance une vidéo avant d’activer le mini-lecteur.',true);
+   return;
+ }
+ if(document.pictureInPictureElement===video)return;
+ if(!canUsePiP()){
+   if(!silent)toast('PiP non disponible : essaie Chrome Android en HTTPS.',true);
+   return;
+ }
+ // The browser alone decides whether the request has sufficient permission.
+ try{
+   const promise=video.requestPictureInPicture();
+   if(promise && typeof promise.catch==='function')
+     promise.catch(()=>{if(!silent)toast('PiP refusé par le navigateur. Essaie depuis HTTPS ou autorise le mini-lecteur.',true);});
+ }catch{
+   if(!silent)toast('PiP indisponible dans ce navigateur.',true);
+ }
+}
+$('pipBtn').addEventListener('click',()=>{
+ if(document.pictureInPictureElement===$('video')){
+   document.exitPictureInPicture().catch(()=>{});
+ }else requestVideoPiP(false);
+});
+$('video').addEventListener('enterpictureinpicture',()=>{
+ $('pipBtn').title='Fermer le mini-lecteur';
+});
+$('video').addEventListener('leavepictureinpicture',()=>{
+ $('pipBtn').title='Mini-lecteur (PiP)';
+});
+// Automatic PiP for supported browsers, and a best-effort Android fallback.
+// A hidden page usually lacks transient user activation; ignored if rejected.
+document.addEventListener('visibilitychange',()=>{
+ if(document.hidden && androidDevice)requestVideoPiP(true);
+});
+if('mediaSession' in navigator && typeof navigator.mediaSession.setActionHandler==='function'){
+ try{
+   navigator.mediaSession.setActionHandler('enterpictureinpicture',()=>requestVideoPiP(true));
+ }catch{
+   // Browser does not implement this Media Session action.
+ }
+}
+function updateMediaSession(playing){
+ if(!('mediaSession' in navigator))return;
+ try{
+   navigator.mediaSession.playbackState=playing?'playing':'paused';
+   if(playing && typeof MediaMetadata!=='undefined')
+     navigator.mediaSession.metadata=new MediaMetadata({
+       title:appState.stream?.name||'AceStream Web',artist:'AceStream Web'
+     });
+ }catch{
+   // No impact on video playback if Media Session is unavailable.
+ }
+}
+function resetVideo(){const video=$('video');hideVideoLoading();updateMediaSession(false);if(appState.hls){appState.hls.destroy();appState.hls=null;}video.pause();video.removeAttribute('src');video.load();$('videoPlaceholder').hidden=false;}
 function playerStatus(text,error=false){if(error)hideVideoLoading();$('playerMessage').textContent=text;$('playerMessage').classList.toggle('error',error);$('streamState').textContent=error?'Erreur':appState.stream?'Lecture':'Prêt';$('playerPill').textContent=error?'Erreur':appState.stream?'Actif':'En attente';$('streamPill').textContent=appState.stream?'En cours':'En attente';}
 function attachHLS(url){
  const video=$('video');$('videoPlaceholder').hidden=true;
@@ -282,6 +352,7 @@ function attachHLS(url){
 }
 $('video').addEventListener('playing',()=>{
  hideVideoLoading();
+ updateMediaSession(true);
  playerStatus('Lecture en cours.');
 });
 $('video').addEventListener('waiting',()=>{
@@ -291,6 +362,7 @@ $('video').addEventListener('stalled',()=>{
  if(playerRequested)showVideoLoading('Connexion au flux…');
 });
 $('video').addEventListener('pause',()=>{
+ updateMediaSession(false);
  if(!appState.busy)hideVideoLoading();
 });
 $('video').addEventListener('error',()=>{
