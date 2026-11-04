@@ -51,7 +51,15 @@ def parse_playlist(body):
             content_id = extract_hash(line)
             if content_id and content_id not in seen:
                 seen.add(content_id)
-                items.append({**metadata, "content_id": content_id, "source": "search-ace.stream"})
+                entry = {**metadata, "content_id": content_id, "source": "search-ace.stream"}
+                # Some M3U entries use an infohash instead of a Content ID.
+                # Preserve that distinction for the reader and favorites.
+                try:
+                    if parse_qs(urlsplit(line).query).get("infohash"):
+                        entry["playback_ref"] = "acestream://?infohash=" + content_id
+                except ValueError:
+                    pass
+                items.append(entry)
             metadata = None
             if len(items) >= MAX_ITEMS:
                 break
