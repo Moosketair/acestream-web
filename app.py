@@ -345,12 +345,14 @@ def create_app(config=None):
         name = d.get("name")
         group_name = d.get("group_name", "Mes favoris")
         notes = d.get("notes", "")
-        _, content_id = parse_content(d.get("content_id"))
+        parameter, content_id = parse_content(d.get("content_id"))
         if (not isinstance(name, str) or not 1 <= len(name.strip()) <= 120 or
             not isinstance(group_name, str) or not 1 <= len(group_name.strip()) <= 60 or
             not isinstance(notes, str) or len(notes) > 500 or not content_id):
             return None
-        return name.strip(), content_id, group_name.strip(), notes.strip()
+        # Retain explicit infohash type in the database. A raw hash is an id.
+        saved_ref = "acestream://?infohash=" + content_id if parameter == "infohash" else content_id
+        return name.strip(), saved_ref, group_name.strip(), notes.strip()
 
     @app.post("/api/favorites")
     @logged_in
@@ -498,8 +500,9 @@ def create_app(config=None):
             manager.stop(sid)
             return jsonify(error="Le VPN s'est interrompu pendant le démarrage."), 503
         con = database()
+        history_ref = "acestream://?infohash=" + content_id if parameter == "infohash" else content_id
         con.execute("INSERT INTO history(user_id,name,content_id,played_at) VALUES(?,?,?,?)",
-                    (current_user()["id"], title, content_id, int(time.time())))
+                    (current_user()["id"], title, history_ref, int(time.time())))
         con.execute("DELETE FROM history WHERE id IN (SELECT id FROM history WHERE user_id=? "
                     "ORDER BY played_at DESC LIMIT -1 OFFSET 200)", (current_user()["id"],))
         con.commit()
