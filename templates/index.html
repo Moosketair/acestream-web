@@ -3,6 +3,8 @@
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#0b1020"><title>AceStream Web</title>
+<link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+<link rel="manifest" href="/static/site.webmanifest">
 <link rel="stylesheet" href="/static/app.css">
 <script src="https://cdn.jsdelivr.net/npm/hls.js@1.6.13/dist/hls.min.js" defer></script>
 <script src="/static/app.js" defer></script>
@@ -26,6 +28,7 @@
 <symbol id="i-lock" viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="12" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></symbol>
 <symbol id="i-logout" viewBox="0 0 24 24"><path d="M9 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h4m5-4 5-5-5-5m5 5H9"/></symbol>
 <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 7V3h-4M4 17v4h4M20 7a8 8 0 0 0-14-2M4 17a8 8 0 0 0 14 2"/></symbol>
+<symbol id="i-expand" viewBox="0 0 24 24"><path d="M8 3H3v5M3 3l7 7m6-7h5v5m0-5-7 7M3 16v5h5m-5 0 7-7m11 2v5h-5m5 0-7-7"/></symbol>
 </defs></svg>
 <div class="app-shell" id="appShell" hidden>
  <aside class="sidebar" id="sidebar">
@@ -39,7 +42,7 @@
     <button class="navitem admin-only" data-view="users" hidden><svg><use href="#i-users"/></svg>Utilisateurs</button>
     <button class="navitem" data-view="settings"><svg><use href="#i-gear"/></svg>Paramètres</button>
   </nav>
-  <div class="sidebar-bottom"><div class="side-system"><span class="status-dot unknown" id="sideDot"></span><strong id="sideSystem">Vérification...</strong><small>Proton VPN · AceStream</small></div><p class="version">AceStream Web <b>0.2.1</b></p></div>
+  <div class="sidebar-bottom"><div class="side-system"><span class="status-dot unknown" id="sideDot"></span><strong id="sideSystem">Vérification...</strong><small>Proton VPN · AceStream</small></div><p class="version">AceStream Web <b>0.2.2</b></p></div>
  </aside>
  <div class="main-shell">
   <header class="topbar"><button id="menuBtn" class="icon-btn menu-btn" aria-label="Menu">☰</button><div class="breadcrumbs">Application <span>/</span> <b id="breadcrumb">Tableau de bord</b></div><div class="top-actions"><span class="top-vpn" id="topVpn"><span class="status-dot unknown"></span>VPN inconnu</span><button class="user-chip" id="profileBtn"><span class="avatar" id="avatar">M</span><span><b id="topUsername">Utilisateur</b><small id="topRole">Compte</small></span><span>⌄</span></button></div></header>
@@ -48,7 +51,13 @@
    <section id="view-dashboard" class="view">
     <div class="dashboard-grid">
       <div class="left-column">
-        <section class="panel player-panel"><div class="section-head"><div><span class="section-icon"><svg><use href="#i-play"/></svg></span><h2>Lecteur vidéo</h2></div><span class="pill" id="playerPill">En attente</span></div><div class="video-frame"><video id="video" controls playsinline preload="none"></video><div id="videoPlaceholder" class="video-placeholder"><span class="big-play"><svg><use href="#i-play"/></svg></span><strong>Prêt pour la lecture</strong><span>Choisissez un résultat, un favori ou collez un identifiant.</span></div></div><div class="manual-row"><input id="manualInput" placeholder="Coller un hash ou un lien Ace Stream…" aria-label="Identifiant manuel"><button class="button primary" id="manualPlay"><svg><use href="#i-play"/></svg> Lire</button><button class="button muted" id="stopBtn">Arrêter</button></div><p id="playerMessage" class="player-message" role="status" aria-live="polite">Aucune lecture en cours.</p></section>
+        <section class="panel player-panel"><div class="section-head"><div><span class="section-icon"><svg><use href="#i-play"/></svg></span><h2>Lecteur vidéo</h2></div><span class="pill" id="playerPill">En attente</span></div><div class="video-frame" id="videoFrame"><video id="video" controls playsinline preload="none"></video>
+<div id="videoLoading" class="video-loading" role="status" aria-live="polite" hidden>
+ <span class="video-loading-spinner" aria-hidden="true"></span>
+ <span id="videoLoadingLabel">Connexion au flux…</span>
+</div>
+<button type="button" id="fullscreenBtn" class="fullscreen-action" aria-label="Activer le plein écran" title="Plein écran"><svg><use href="#i-expand"/></svg></button>
+<div id="videoPlaceholder" class="video-placeholder"><span class="big-play"><svg><use href="#i-play"/></svg></span><strong>Prêt pour la lecture</strong><span>Choisissez un résultat, un favori ou collez un identifiant.</span></div></div><div class="manual-row"><input id="manualInput" placeholder="Coller un hash ou un lien Ace Stream…" aria-label="Identifiant manuel"><button class="button primary" id="manualPlay"><svg><use href="#i-play"/></svg> Lire</button><button class="button muted" id="stopBtn">Arrêter</button></div><p id="playerMessage" class="player-message" role="status" aria-live="polite">Aucune lecture en cours.</p></section>
       </div>
       <div class="right-column">
         <section class="panel search-panel"><div class="section-head"><div><span class="section-icon purple"><svg><use href="#i-search"/></svg></span><h2>Rechercher un flux</h2></div><span class="eyebrow" id="searchSource">SOURCE · PLAYLIST PUBLIQUE</span></div>
