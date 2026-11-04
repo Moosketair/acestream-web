@@ -144,7 +144,7 @@ def create_app(config=None):
         return value if isinstance(value, dict) else {}
 
     def validate_password(text):
-        return isinstance(text, str) and 12 <= len(text) <= 256
+        return isinstance(text, str) and 10 <= len(text) <= 256
 
     def validate_username(text):
         return isinstance(text, str) and 3 <= len(text) <= 32 and all(
@@ -223,7 +223,7 @@ def create_app(config=None):
         if not token or len(token) < 24 or token.startswith("REPLACE_") or not hmac.compare_digest(str(d.get("setup_token", "")), token):
             return jsonify(error="Clé d'initialisation incorrecte."), 403
         if not validate_username(d.get("username")) or not validate_password(d.get("password")):
-            return jsonify(error="Identifiant invalide ou mot de passe de moins de 12 caractères."), 400
+            return jsonify(error="Identifiant invalide ou mot de passe de moins de 10 caractères."), 400
         con = database()
         try:
             con.execute("BEGIN IMMEDIATE")
@@ -282,7 +282,7 @@ def create_app(config=None):
         if not check_password_hash(row["password_hash"], str(d.get("old_password", ""))):
             return jsonify(error="Mot de passe actuel incorrect."), 403
         if not validate_password(d.get("new_password")):
-            return jsonify(error="Nouveau mot de passe : 12 caractères minimum."), 400
+            return jsonify(error="Nouveau mot de passe : 10 caractères minimum."), 400
         database().execute("UPDATE users SET password_hash=? WHERE id=?",
                            (generate_password_hash(d["new_password"]), user["id"]))
         database().commit()
@@ -299,7 +299,7 @@ def create_app(config=None):
     def add_user():
         d = body()
         if not validate_username(d.get("username")) or not validate_password(d.get("password")):
-            return jsonify(error="Identifiant invalide ou mot de passe de moins de 12 caractères."), 400
+            return jsonify(error="Identifiant invalide ou mot de passe de moins de 10 caractères."), 400
         role = d.get("role", "user")
         if role not in ("admin", "user"):
             return jsonify(error="Rôle invalide."), 400
