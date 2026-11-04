@@ -15,7 +15,7 @@ from flask import (Flask, abort, g, jsonify, render_template, request, send_file
                    send_from_directory, session)
 from werkzeug.security import check_password_hash, generate_password_hash
 
-from search_sources import PlaylistSearch
+from search_sources import PlaylistSearch, EngineSearch
 from streaming import StreamManager, parse_content
 
 SCHEMA = """
@@ -68,6 +68,8 @@ def create_app(config=None):
 
     manager = StreamManager(data / "hls", app.config["ACESTREAM_URL"], app.config["MAX_STREAMS"])
     searcher = PlaylistSearch()
+    engine_searcher = EngineSearch(app.config["ACESTREAM_URL"])
+    app.extensions["engine_search"] = engine_searcher
     app.extensions["stream_manager"] = manager
     app.extensions["playlist_search"] = searcher
     login_attempts = defaultdict(deque)
@@ -395,13 +397,49 @@ def create_app(config=None):
     @logged_in
     def search():
         query = request.args.get("q", "").strip()
+        source = request.args.get("source", "all")
         if not 2 <= len(query) <= 100:
             return jsonify(error="Recherche entre 2 et 100 caractères requise."), 400
-        try:
-            results, total, warning = searcher.search(query)
-            return jsonify(results=results, total=total, warning=warning, source="search-ace.stream")
-        except RuntimeError as exc:
-            return jsonify(error=str(exc)), 503
+        if source not in ("all", "playlist", "engine"):
+            return jsonify(error="Source de recherche inconnue."), 400
+
+        results, warnings, sources = [], [], []
+        successful = 0
+        if source in ("all", "engine"):
+            if not vpn_status()["connected"]:
+                warnings.append("VPN indisponible : recherche moteur désactivée.")
+            else:
+                try:
+                    engine_results, _total, _warning = engine_searcher.search(query)
+                    results.extend(engine_results)
+                    sources.append("API Ace Stream")
+                    successful += 1
+                except RuntimeError:
+                    warnings.append("L'API de recherche Ace Stream est indisponible sur ce moteur.")
+        if source in ("all", "playlist"):
+            try:
+                playlist_results, _total, warning = searcher.search(query)
+                results.extend(playlist_results)
+                sources.append("search-ace.stream")
+                successful += 1
+                if warning:
+                    warnings.append("Source playlist momentanément inaccessible : résultats en cache.")
+            except RuntimeError:
+                warnings.append("La playlist search-ace.stream est momentanément indisponible.")
+
+        if not successful:
+            return jsonify(error="Aucune source de recherche disponible.",
+                           warnings=warnings), 503
+        # Deduplicate across providers without exposing API tokens to the browser.
+        merged, seen = [], set()
+        for entry in results:
+            content_id = entry["content_id"]
+            if content_id not in seen:
+                seen.add(content_id)
+                merged.append(entry)
+        return jsonify(results=merged[:60], total=len(merged),
+                       warning=" ".join(warnings) if warnings else None,
+                       sources=sources, source=" + ".join(sources))
 
     @app.get("/api/monitor")
     @logged_in
