@@ -186,7 +186,9 @@ async function search(query){
   const data=await api(`/api/search?q=${encodeURIComponent(query)}&source=${encodeURIComponent(source)}`);
   appState.results=data.results;renderSearch(data.results);
   $('searchHint').textContent=`${data.total} résultat(s) · ${data.results.length} affiché(s) · ${data.source}`;
-  $('searchSource').textContent=`SOURCE · ${source==='all'?'TOUTES':source==='engine'?'API ACE STREAM':'PLAYLIST'}`;
+  if(!data.results.length && source==='engine')$('searchHint').textContent+=' · Essayez « Recherche du site » pour les événements récents.';
+  const labels={site:'SITE SEARCH-ACE.STREAM',all:'TOUTES',engine:'INDEX DU MOTEUR',playlist:'PLAYLIST'};
+  $('searchSource').textContent=`SOURCE · ${labels[source]||'SITE'}`;
   if(data.warning)toast(data.warning,true);
  }catch(err){appState.results=[];$('searchHint').textContent='Recherche indisponible.';const msg=`<div class="empty mini">${escapeHTML(err.message)}</div>`;$('searchResults').innerHTML=msg;$('searchResults2').innerHTML=msg;toast(err.message,true);}
 }
@@ -194,7 +196,8 @@ function renderSearch(results){
  const ids=new Set(appState.favorites.map(f=>f.content_id));
  const html=results.length?results.map(entry=>{
    const availability=entry.status===2?' · Disponible (estimation API)':entry.status===1?' · Disponibilité incertaine':'';
-   return `<div class="result-item"><div class="result-symbol">${icons('monitor')}</div><div class="item-body"><strong title="${escapeHTML(entry.name)}">${escapeHTML(entry.name)}</strong><small>${escapeHTML(entry.category||'Divers')} · ${escapeHTML(entry.source||'Source externe')}${escapeHTML(availability)}</small></div><div class="item-actions"><button class="tiny-btn star" title="${ids.has(entry.content_id)?'Déjà dans les favoris':'Ajouter aux favoris'}" data-action="star-result" data-id="${entry.content_id}">${icons('star')}</button><button class="tiny-btn play" title="Lire" data-action="play-result" data-id="${entry.content_id}">${icons('play')}</button></div></div>`;
+   const translation=entry.translated_name && entry.translated_name!==entry.name?` · ${entry.translated_name}`:'';
+   return `<div class="result-item"><div class="result-symbol">${icons('monitor')}</div><div class="item-body"><strong title="${escapeHTML(entry.name)}">${escapeHTML(entry.name)}</strong><small>${escapeHTML(entry.category||'Divers')} · ${escapeHTML(entry.source||'Source externe')}${escapeHTML(translation)}${escapeHTML(availability)}</small></div><div class="item-actions"><button class="tiny-btn star" title="${ids.has(entry.content_id)?'Déjà dans les favoris':'Ajouter aux favoris'}" data-action="star-result" data-id="${entry.content_id}">${icons('star')}</button><button class="tiny-btn play" title="Lire" data-action="play-result" data-id="${entry.content_id}">${icons('play')}</button></div></div>`;
  }).join(''):'<div class="empty mini">Aucun résultat trouvé pour cette recherche.</div>';
  $('searchResults').innerHTML=html;$('searchResults2').innerHTML=html;
 }
