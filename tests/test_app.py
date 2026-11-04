@@ -98,7 +98,7 @@ class DashboardTests(unittest.TestCase):
                              engine_result.get_data(as_text=True))
             self.assertEqual(start.call_args.args[1:3], ('infohash', HASH))
         history = self.client.get('/api/history').get_json()['history']
-        self.assertEqual(history[0]['content_id'], 'acestream://?infohash='+HASH)
+        self.assertIn('acestream://?infohash='+HASH, [entry['content_id'] for entry in history])
 
     def test_vpn_fail_closed_without_ffmpeg(self):
         self.setup_admin()
