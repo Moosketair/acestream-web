@@ -6,11 +6,11 @@ Interface Web **auto-hébergée** pour consulter et lire des flux Ace Stream aut
 
 Trois services dans **un seul `compose.yaml` Dockge** :
 
-- **Gluetun + Proton WireGuard** : isolant réseau et coupe-circuit. API de supervision accessible uniquement à l'intérieur de la stack ; les deux routes GET autorisées sont configurées dans `config/gluetun-control.toml`.
+- **Gluetun + Proton WireGuard** : isolant réseau et coupe-circuit pour le **moteur Ace Stream seulement**. API de supervision accessible à AceStream Web sur le bridge Docker privé ; les deux routes GET autorisées sont configurées dans `config/gluetun-control.toml`.
 - **Ace Stream Engine** : `jopsis/aceserve:v3.2.17`, réseau partagé avec Gluetun. **Le port 6878 n'est jamais publié sur l'hôte.**
-- **AceStream Web** : Flask + SQLite + FFmpeg + HLS.js, réseau également partagé avec Gluetun. **Même la récupération de la playlist externe passe par le réseau VPN.** Seule l'interface Web est publiée (port hôte 8087, port conteneur 8080).
+- **AceStream Web** : Flask + SQLite + FFmpeg + HLS.js, sur un réseau Docker bridge **normal, sans VPN**. Le moteur et l'API de supervision sont accessibles seulement dans ce réseau par `http://gluetun:6878` et `http://gluetun:8000`. Seule l'interface Web est publiée sur le port hôte 8087 ; les ports 6878 et 8000 restent privés.
 
-Le serveur Web vérifie `GET /v1/vpn/status` avant d'autoriser la lecture, vérifie de nouveau après le démarrage et un surveillant coupe les flux si le VPN n'est plus confirmé connecté. Cette vérification s'ajoute au pare-feu de Gluetun ; **elle ne remplace pas un audit du coupe-circuit en conditions réelles**. Le badge connecté ne garantit pas le pays du serveur ni l'absence de toute fuite DNS.
+Le serveur Web vérifie `GET /v1/vpn/status` avant d'autoriser la lecture, vérifie de nouveau après le démarrage et un surveillant coupe les flux si le VPN n'est plus confirmé connecté. Cette vérification s'ajoute au pare-feu de Gluetun ; **elle ne remplace pas un audit du coupe-circuit en conditions réelles**. Le badge connecté ne garantit pas le pays du serveur ni l'absence de toute fuite DNS. Les connexions P2P du moteur doivent toujours sortir par Gluetun. La liaison Web ↔ moteur est du HTTP privé au bridge Docker, sans exposer le port 6878 sur l'hôte.
 
 **Important :** une clé privée WireGuard précédemment copiée dans un message doit être **révoquée et renouvelée** sur Proton VPN. Ne publiez jamais le fichier `.env` ni les données SQLite.
 
@@ -39,16 +39,22 @@ Le serveur Web vérifie `GET /v1/vpn/status` avant d'autoriser la lecture, véri
 | `COOKIE_SECURE` | Cookies uniquement HTTPS (avec proxy TLS) | `false` en HTTP LAN, `true` en HTTPS |
 | `ACESTREAM_DNS_FILE` | DNS personnalisé du conteneur moteur | `./config/resolv.conf` |
 
-### Accès depuis Internet
+### HTTPS, vie privée et accès distant
 
-**Ne publiez pas directement le port Web sur Internet.** Pour un accès distant, privilégiez WireGuard/Tailscale ou un proxy HTTPS protégé ; activez `COOKIE_SECURE=true` si toutes les pages sont accessibles en HTTPS. La session n'est pas destinée à passer en clair sur un réseau non fiable. L'API Gluetun port 8000 n'est pas publiée ; seules deux routes de lecture sont permises à l'intérieur de la stack.
+Le lecteur Web **ne passe pas par Proton VPN** : son port 8087 sert directement les pages et les segments HLS sur le réseau local, ou à travers un reverse proxy HTTPS. Ce découplage n'empêche pas le moteur Ace Stream de communiquer uniquement via Proton VPN grâce à `network_mode: service:gluetun` et au coupe-circuit.
+
+**Le port 8087 n'est pas HTTPS par lui-même.** `http://IP_DU_SERVEUR:8087` est en clair : utilisez un reverse proxy TLS ou Tailscale/WireGuard pour les connexions sur Internet. Activez `COOKIE_SECURE=true` seulement si l'interface est utilisée **exclusivement via HTTPS**, sinon le navigateur ne renverra pas les cookies de session en HTTP. En HTTPS, l'opérateur réseau voit la connexion vers votre serveur mais pas, en règle générale, les URLs HLS et le contenu de la vidéo chiffrés.
+
+Les requêtes sortantes faites **par l'interface Web** (par exemple le téléchargement de la playlist de recherche externe) utilisent désormais l'IP publique du **serveur**, et non celle de Proton. Si cela pose un problème de confidentialité, il faudra proxyfier **uniquement les recherches externes** ou les désactiver ; le trafic P2P Ace Stream, lui, reste dans Gluetun.
+
+**Ne publiez pas directement le port Web sur Internet.** Pour un accès distant, privilégiez un VPN d'accès comme Tailscale ou un reverse proxy HTTPS protégé. L'API Gluetun port 8000 n'est pas publiée ; seules deux routes de lecture sont permises à l'intérieur de la stack.
 
 ## Fonctionnalités
 
 - Connexion, première initialisation sécurisée, changement de mot de passe, rôles `admin` / `user` et administration des comptes.
 - Favoris **propres à chaque compte** : nom, hash, groupe et notes ; création, édition, suppression.
 - Historique de lecture par compte.
-- **Recherche de chaînes** dans la playlist publique documentée de [search-ace.stream](https://search-ace.stream/doc), mise en cache **20 minutes**. Cette source externe peut être indisponible, bloquée ou changer de format ; aucune garantie de disponibilité des flux affichés. La recherche est limitée à la playlist, pas nécessairement à tous les résultats de la page Web.
+- **Recherche de chaînes** dans la playlist publique documentée de [search-ace.stream](https://search-ace.stream/doc), mise en cache **20 minutes**. Cette source externe peut être indisponible, bloquée ou changer de format ; aucune garantie de disponibilité des flux affichés. La recherche est limitée à la playlist, pas nécessairement à tous les résultats de la page Web. Le téléchargement de cette playlist par AceStream Web **ne passe pas par Proton VPN**.
 - Monitoring à partir des API Gluetun (`/v1/vpn/status`, `/v1/publicip/ip`) et Ace Stream (`get_version`). Les valeurs non disponibles sont affichées comme telles — aucun débit ou pays fictif.
 - Lecture HLS via FFmpeg ; autorisations sur chaque playlist et chaque segment.
 - Hash brut, URI `acestream://` et liens `infohash`, `id`, `content_id`.
