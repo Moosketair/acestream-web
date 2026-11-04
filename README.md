@@ -1,4 +1,4 @@
-# AceStream Web 0.2 — Tableau de bord Docker
+# AceStream Web 0.2.1 — Tableau de bord Docker
 
 Interface Web **auto-hébergée** pour consulter et lire des flux Ace Stream autorisés, avec interface responsive, comptes utilisateurs, favoris privés, recherche et monitoring Gluetun/Proton VPN.
 
@@ -22,7 +22,7 @@ Le serveur Web vérifie `GET /v1/vpn/status` avant d'autoriser la lecture, véri
 4. Si vous utilisiez `/opt/acestream/dns/resolv.conf`, définissez `ACESTREAM_DNS_FILE=/opt/acestream/dns/resolv.conf` dans `.env`.
 5. **Sauvegardez votre stack actuelle**. Dans Dockge, remplacez le compose et ajoutez les nouveaux fichiers `.env` et `config/gluetun-control.toml` dans le dossier de stack.
 6. Déployez avec `docker compose pull` puis `docker compose up -d`. Attendez que Gluetun soit healthy. L'interface est accessible sur `http://IP_DU_SERVEUR:8087` (port hôte modifiable).
-7. À la première ouverture, renseignez un identifiant, un mot de passe de **12 caractères minimum**, puis la `SETUP_TOKEN` de `.env`. **Aucun identifiant/mot de passe par défaut**.
+7. À la première ouverture, renseignez un identifiant, un mot de passe de **10 caractères minimum**, puis la `SETUP_TOKEN` de `.env`. **Aucun identifiant/mot de passe par défaut**.
 8. Rendez le package GHCR public dans les paramètres GitHub Packages, si vous voulez pouvoir le télécharger sans connexion.
 
 > Le volume Docker nommé `acestream-data` conserve la base SQLite, les comptes, les favoris, l'historique et la clé de session. Pensez à **le sauvegarder**. La migration ne récupère pas de données du précédent lecteur, qui n'avait pas de comptes ou de favoris.
@@ -51,6 +51,8 @@ Les requêtes sortantes faites **par l'interface Web** (par exemple le télécha
 
 ## Fonctionnalités
 
+- **Tableau de bord réorganisé** : lecteur vidéo en grand à gauche, recherche et favoris à droite, puis état du VPN, du moteur, des lectures et compte utilisateur en bas. Sur écran étroit, les blocs s'empilent pour garder le lecteur en premier.
+- **Mots de passe** : minimum de **10 caractères** pour l'initialisation, les nouveaux utilisateurs et les changements de mot de passe ; les mots de passe existants restent valables à la connexion.
 - Connexion, première initialisation sécurisée, changement de mot de passe, rôles `admin` / `user` et administration des comptes.
 - Favoris **propres à chaque compte** : nom, hash, groupe et notes ; création, édition, suppression.
 - Historique de lecture par compte.
