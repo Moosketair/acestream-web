@@ -3,7 +3,9 @@
 !.env.example
 __pycache__/
 *.py[cod]
-.pytest_cache/
 .venv/
+.pytest_cache/
+.coverage
 *.log
 .DS_Store
+data/

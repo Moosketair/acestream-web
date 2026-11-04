@@ -1,0 +1,6 @@
+# Read-only and limited to the two endpoints used by AceStream Web.
+# Not published on the host; both containers share a private network namespace.
+[[roles]]
+name = "acestream-web-monitor"
+routes = ["GET /v1/vpn/status", "GET /v1/publicip/ip"]
+auth = "none"
