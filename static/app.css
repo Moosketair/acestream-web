@@ -42,3 +42,68 @@ body.android-landscape-video .pip-action{top:max(12px,env(safe-area-inset-top));
 .brand-icon,.auth-logo{overflow:hidden}
 .brand-icon img{display:block;width:39px;height:39px;border-radius:12px;object-fit:cover}
 .auth-logo img{display:block;width:58px;height:58px;border-radius:17px;object-fit:cover}
+
+
+/*
+ * Mobile: make all dashboard cards use exactly the same available width.
+ * "1fr" has an automatic min-content floor; a long search select/label can
+ * otherwise widen one card and make the video card appear much narrower.
+ */
+@media (max-width:740px) {
+  .app-shell,
+  .main-shell,
+  .content,
+  .view,
+  .dashboard-grid,
+  .dashboard-details,
+  .dashboard-grid > .left-column,
+  .dashboard-grid > .right-column,
+  .dashboard-details > .metrics {
+    width:100%;
+    max-width:100%;
+    min-width:0;
+  }
+
+  .dashboard-grid,
+  .dashboard-details,
+  .dashboard-details > .metrics {
+    grid-template-columns:minmax(0,1fr);
+  }
+
+  .dashboard-grid > .left-column,
+  .dashboard-grid > .right-column {
+    display:flex;
+    flex-direction:column;
+    align-items:stretch;
+  }
+
+  .dashboard-grid .panel,
+  .dashboard-details .panel,
+  .dashboard-details .metric-card,
+  #view-search > .panel,
+  #view-favorites > .panel {
+    box-sizing:border-box;
+    width:100%;
+    max-width:100%;
+    min-width:0;
+  }
+
+  .search-form,
+  .manual-row,
+  .search-options,
+  .video-frame {
+    min-width:0;
+    max-width:100%;
+  }
+
+  .search-options select {
+    min-width:0;
+    max-width:100%;
+  }
+
+  .section-head,
+  .search-options,
+  .metric-details {
+    overflow-wrap:anywhere;
+  }
+}
