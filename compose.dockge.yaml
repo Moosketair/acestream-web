@@ -1,0 +1,74 @@
+# Single-file setup for existing Dockge Enhanced stack on user's Debian server.
+# Put WIREGUARD_PRIVATE_KEY and SETUP_TOKEN in Dockge's .env editor (never GitHub).
+# Keep this in the SAME existing stack to avoid duplicate container names and port 8087.
+services:
+  gluetun:
+    image: qmcgaw/gluetun:latest
+    container_name: acestream-vpn
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    environment:
+      VPN_SERVICE_PROVIDER: protonvpn
+      VPN_TYPE: wireguard
+      WIREGUARD_PRIVATE_KEY: ${WIREGUARD_PRIVATE_KEY:?Ajoute_la_cle_dans_Dockge_Env}
+      DNS_SERVER: 'on'
+      DNS_UPSTREAM_RESOLVER_TYPE: dot
+      DNS_UPSTREAM_RESOLVERS: cloudflare
+    networks:
+      - acestream-net
+    configs:
+      - source: gluetun_monitor
+        target: /gluetun/auth/config.toml
+
+  acestream:
+    image: jopsis/aceserve:v3.2.17
+    container_name: acestream
+    restart: unless-stopped
+    network_mode: service:gluetun
+    volumes:
+      - /opt/acestream/dns/resolv.conf:/etc/resolv.conf:ro
+    depends_on:
+      gluetun:
+        condition: service_healthy
+
+  acestream-web:
+    image: ghcr.io/moosketair/acestream-web:latest
+    container_name: acestream-web
+    restart: unless-stopped
+    pull_policy: always
+    ports:
+      - '8087:8080'
+    environment:
+      DATA_DIR: /data
+      ACESTREAM_URL: http://gluetun:6878
+      GLUETUN_URL: http://gluetun:8000
+      SETUP_TOKEN: ${SETUP_TOKEN:?Ajoute_un_jeton_de_32_caracteres_dans_Dockge_Env}
+      COOKIE_SECURE: 'false'
+      MAX_STREAMS: '3'
+    volumes:
+      - acestream-data:/data
+    networks:
+      - acestream-net
+    depends_on:
+      gluetun:
+        condition: service_healthy
+      acestream:
+        condition: service_started
+
+networks:
+  acestream-net:
+    driver: bridge
+
+volumes:
+  acestream-data:
+
+configs:
+  gluetun_monitor:
+    content: |
+      [[roles]]
+      name = "acestream-web-monitor"
+      routes = ["GET /v1/vpn/status", "GET /v1/publicip/ip"]
+      auth = "none"
