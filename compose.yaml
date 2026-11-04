@@ -15,31 +15,38 @@ services:
       DNS_SERVER: "on"
       DNS_UPSTREAM_RESOLVER_TYPE: dot
       DNS_UPSTREAM_RESOLVERS: cloudflare
-      FIREWALL_INPUT_PORTS: "8080"
-    ports:
-      # Web interface only. Never publish ports 6878 (engine) or 8000 (VPN API).
-      - "${WEB_BIND_IP:-0.0.0.0}:${WEB_PORT:-8087}:8080"
+    networks:
+      - acestream-net
+    # No host ports: the Ace Stream engine and VPN control API stay private to Docker.
     volumes:
       - ./config/gluetun-control.toml:/gluetun/auth/config.toml:ro
+
   acestream:
     image: jopsis/aceserve:v3.2.17
     container_name: acestream
     restart: unless-stopped
-    network_mode: service:gluetun
+    # All Ace Stream peer connections use Gluetun's VPN + kill switch.
+    network_mode: "service:gluetun"
     volumes:
       - ${ACESTREAM_DNS_FILE:-./config/resolv.conf}:/etc/resolv.conf:ro
     depends_on:
       gluetun:
         condition: service_healthy
+
   acestream-web:
     image: ghcr.io/moosketair/acestream-web:latest
     container_name: acestream-web
     restart: unless-stopped
-    network_mode: service:gluetun
+    # Standard Docker bridge, NOT Gluetun's network namespace.
+    networks:
+      - acestream-net
+    ports:
+      - "${WEB_BIND_IP:-0.0.0.0}:${WEB_PORT:-8087}:8080"
     environment:
       DATA_DIR: /data
-      ACESTREAM_URL: http://127.0.0.1:6878
-      GLUETUN_URL: http://127.0.0.1:8000
+      # Internal Docker-only communication. Do NOT publish ports 6878 or 8000.
+      ACESTREAM_URL: http://gluetun:6878
+      GLUETUN_URL: http://gluetun:8000
       SETUP_TOKEN: ${SETUP_TOKEN:?Set an unguessable setup token in .env}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
       MAX_STREAMS: ${MAX_STREAMS:-3}
@@ -50,5 +57,10 @@ services:
         condition: service_healthy
       acestream:
         condition: service_started
+
+networks:
+  acestream-net:
+    driver: bridge
+
 volumes:
   acestream-data:
