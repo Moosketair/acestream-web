@@ -176,21 +176,55 @@ async function monitor(showError=false){
   if(showError)toast(err.message,true);
  }
 }
+let searchGeneration=0;
+function showSearchClearButtons(visible){
+ $('clearSearchBtn').hidden=!visible;
+ $('clearSearchBtn2').hidden=!visible;
+}
+function clearSearchResults(){
+ // Invalidate any pending HTTP response, so it cannot repopulate cleared results.
+ searchGeneration++;
+ appState.results=[];
+ $('searchQuery').value='';
+ $('searchQuery2').value='';
+ $('searchHint').textContent='Recherche effacée. Saisissez un mot-clé.';
+ $('searchSummary2').textContent='Aucun résultat affiché.';
+ const empty='<div class="empty mini">Vos résultats apparaîtront ici.</div>';
+ $('searchResults').innerHTML=empty;
+ $('searchResults2').innerHTML=empty;
+ showSearchClearButtons(false);
+}
 async function search(query){
- query=query.trim();if(query.length<2){toast('Saisissez au moins 2 caractères.',true);return;}
+ query=query.trim();
+ if(query.length<2){toast('Saisissez au moins 2 caractères.',true);return;}
+ const generation=++searchGeneration;
  const source=$('searchSourceSelect').value;
+ showSearchClearButtons(true);
  $('searchHint').textContent='Recherche en cours…';
+ $('searchSummary2').textContent='Recherche en cours…';
  $('searchResults').innerHTML='<div class="empty mini">Recherche dans les sources sélectionnées…</div>';
  $('searchResults2').innerHTML='<div class="empty mini">Recherche dans les sources sélectionnées…</div>';
  try{
   const data=await api(`/api/search?q=${encodeURIComponent(query)}&source=${encodeURIComponent(source)}`);
+  if(generation!==searchGeneration)return;
   appState.results=data.results;renderSearch(data.results);
-  $('searchHint').textContent=`${data.total} résultat(s) · ${data.results.length} affiché(s) · ${data.source}`;
+  const summary=`${data.total} résultat(s) · ${data.results.length} affiché(s) · ${data.source}`;
+  $('searchHint').textContent=summary;
+  $('searchSummary2').textContent=summary;
   if(!data.results.length && source==='engine')$('searchHint').textContent+=' · Essayez « Recherche du site » pour les événements récents.';
   const labels={site:'SITE SEARCH-ACE.STREAM',all:'TOUTES',engine:'INDEX DU MOTEUR',playlist:'PLAYLIST'};
   $('searchSource').textContent=`SOURCE · ${labels[source]||'SITE'}`;
   if(data.warning)toast(data.warning,true);
- }catch(err){appState.results=[];$('searchHint').textContent='Recherche indisponible.';const msg=`<div class="empty mini">${escapeHTML(err.message)}</div>`;$('searchResults').innerHTML=msg;$('searchResults2').innerHTML=msg;toast(err.message,true);}
+ }catch(err){
+  if(generation!==searchGeneration)return;
+  appState.results=[];
+  $('searchHint').textContent='Recherche indisponible.';
+  $('searchSummary2').textContent='Recherche indisponible.';
+  const msg=`<div class="empty mini">${escapeHTML(err.message)}</div>`;
+  $('searchResults').innerHTML=msg;
+  $('searchResults2').innerHTML=msg;
+  toast(err.message,true);
+ }
 }
 function renderSearch(results){
  const ids=new Set(appState.favorites.map(f=>f.content_id));
@@ -201,6 +235,8 @@ function renderSearch(results){
  }).join(''):'<div class="empty mini">Aucun résultat trouvé pour cette recherche.</div>';
  $('searchResults').innerHTML=html;$('searchResults2').innerHTML=html;
 }
+$('clearSearchBtn').addEventListener('click',clearSearchResults);
+$('clearSearchBtn2').addEventListener('click',clearSearchResults);
 $('searchSourceSelect').addEventListener('change',()=>{$('searchSourceSelect2').value=$('searchSourceSelect').value;});
 $('searchSourceSelect2').addEventListener('change',()=>{$('searchSourceSelect').value=$('searchSourceSelect2').value;});
 $('searchForm').addEventListener('submit',event=>{event.preventDefault();$('searchQuery2').value=$('searchQuery').value;search($('searchQuery').value);});

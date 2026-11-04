@@ -1,4 +1,4 @@
-# AceStream Web 0.3.4 — Tableau de bord Docker
+# AceStream Web 0.3.5 — Tableau de bord Docker
 
 Interface Web **auto-hébergée** pour consulter et lire des flux Ace Stream autorisés, avec interface responsive, comptes utilisateurs, favoris privés, recherche et monitoring Gluetun/Proton VPN.
 
@@ -100,6 +100,10 @@ La version 0.3.3 ajoute un favicon classique `/favicon.ico`, un PNG 32×32, une 
 ### Affichage sur Android (v0.3.4)
 
 En portrait, les cartes **Lecteur vidéo**, **Recherche**, **Favoris**, **VPN**, **Moteur**, **Diffusion** et **Mon compte** occupent toutes 100 % de la largeur disponible dans le conteneur principal, avec la même petite marge latérale. Les grilles utilisent `minmax(0, 1fr)` pour empêcher la largeur minimale du contenu de recherche d'élargir une carte au-delà de l'écran. Le CSS est chargé avec un paramètre de version pour limiter le cache mobile. En paysage lors d'une lecture, le comportement d'agrandissement vidéo automatique est inchangé.
+
+### Effacer les résultats d'une recherche (v0.3.5)
+
+Un petit bouton « ✕ Effacer » apparaît pendant/après une recherche, dans le tableau de bord comme dans la page Recherche. Il réinitialise les deux champs de recherche, vide uniquement les résultats temporaires et conserve les favoris, l'historique et les sources sélectionnées. Les réponses d'une requête encore en cours sont ignorées après l'effacement. Le bouton se masque lorsque la recherche est remise à zéro.
 
 ### Limites connues
 

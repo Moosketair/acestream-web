@@ -107,3 +107,9 @@ body.android-landscape-video .pip-action{top:max(12px,env(safe-area-inset-top));
     overflow-wrap:anywhere;
   }
 }
+
+/* Clear-search action: works on both the dashboard and dedicated search view. */
+.search-info-actions{display:flex;align-items:center;justify-content:flex-end;gap:10px;flex-wrap:wrap;min-width:0}
+.clear-search-btn{display:inline-flex;align-items:center;justify-content:center;gap:5px;padding:6px 10px;min-height:34px;background:#26354d;color:#e4eafa;border:1px solid #445675;border-radius:9px;font-size:.78rem;font-weight:650;white-space:nowrap;cursor:pointer}
+.clear-search-btn:hover,.clear-search-btn:focus-visible{background:#3b4568;border-color:#8673dd}
+@media(max-width:740px){.search-info-actions{justify-content:flex-start;max-width:100%}.clear-search-btn{min-height:38px}}

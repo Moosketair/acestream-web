@@ -313,7 +313,7 @@ class DashboardTests(unittest.TestCase):
 
     def test_mobile_dashboard_cards_share_full_available_width(self):
         html = self.client.get('/').get_data(as_text=True)
-        self.assertIn('href="/static/app.css?v=0.3.4"', html)
+        self.assertIn('href="/static/app.css?v=0.3.5"', html)
 
         response = self.client.get('/static/app.css')
         self.assertEqual(response.status_code, 200)
@@ -330,5 +330,20 @@ class DashboardTests(unittest.TestCase):
             self.assertIn(selector, css)
         self.assertIn('align-items:stretch;', css)
         self.assertIn('max-width:100%;', css)
+
+    def test_clear_search_buttons_are_available_in_both_views(self):
+        page=self.client.get('/').get_data(as_text=True)
+        for identifier in ('clearSearchBtn', 'clearSearchBtn2'):
+            self.assertIn(f'id="{identifier}"',page)
+        self.assertIn('src="/static/app.js?v=0.3.5"',page)
+        script=self.client.get('/static/app.js').get_data(as_text=True)
+        self.assertIn('function clearSearchResults()',script)
+        self.assertIn("appState.results=[]",script)
+        self.assertIn("searchGeneration++",script)
+        self.assertIn("if(generation!==searchGeneration)return",script)
+        self.assertIn("'clearSearchBtn').addEventListener('click',clearSearchResults)",script)
+        self.assertIn("'clearSearchBtn2').addEventListener('click',clearSearchResults)",script)
+        css=self.client.get('/static/app.css').get_data(as_text=True)
+        self.assertIn('.clear-search-btn',css)
 
 if __name__ == '__main__':unittest.main()
