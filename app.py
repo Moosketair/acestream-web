@@ -444,7 +444,8 @@ def create_app(config=None):
                 warnings.append("La playlist search-ace.stream est indisponible.")
 
         if not successful:
-            return jsonify(error="Aucune source de recherche disponible.",
+            detail = " ".join(warnings)
+            return jsonify(error=detail or "Aucune source de recherche disponible.",
                            warnings=warnings), 503
 
         merged, seen = [], set()
