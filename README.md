@@ -1,4 +1,4 @@
-# AceStream Web 0.2.1 — Tableau de bord Docker
+# AceStream Web 0.2.2 — Tableau de bord Docker
 
 Interface Web **auto-hébergée** pour consulter et lire des flux Ace Stream autorisés, avec interface responsive, comptes utilisateurs, favoris privés, recherche et monitoring Gluetun/Proton VPN.
 
@@ -52,6 +52,9 @@ Les requêtes sortantes faites **par l'interface Web** (par exemple le télécha
 ## Fonctionnalités
 
 - **Tableau de bord réorganisé** : lecteur vidéo en grand à gauche, recherche et favoris à droite, puis état du VPN, du moteur, des lectures et compte utilisateur en bas. Sur écran étroit, les blocs s'empilent pour garder le lecteur en premier.
+- **Lecteur amélioré** : animation de chargement dès le clic sur « Lire », pendant l'initialisation Ace Stream et pendant la mise en mémoire tampon. L'animation disparaît lorsque la lecture démarre, et les erreurs sont affichées plutôt que de laisser un chargement infini.
+- **Android paysage** : pendant une lecture active, la vidéo occupe automatiquement toute la fenêtre lors du passage en paysage et revient à sa taille normale en portrait. Le navigateur peut interdire le **plein écran système natif** sans interaction utilisateur : l'application tente le mode natif quand c'est autorisé, et utilise autrement un affichage plein écran dans la page ; le bouton ⛶ permet de demander explicitement le mode natif. La rotation automatique du téléphone doit être activée.
+- **Icône Web** : favicon SVG violet/bleu et manifeste de raccourci pour Android. Le nouveau favicon peut nécessiter un rechargement forcé ou la suppression du cache du navigateur.
 - **Mots de passe** : minimum de **10 caractères** pour l'initialisation, les nouveaux utilisateurs et les changements de mot de passe ; les mots de passe existants restent valables à la connexion.
 - Connexion, première initialisation sécurisée, changement de mot de passe, rôles `admin` / `user` et administration des comptes.
 - Favoris **propres à chaque compte** : nom, hash, groupe et notes ; création, édition, suppression.
@@ -67,6 +70,7 @@ Les requêtes sortantes faites **par l'interface Web** (par exemple le télécha
 - FFmpeg conserve pour l'instant la vidéo en `copy`. Certaines sources avec codecs non compatibles HLS/navigateur peuvent échouer.
 - La bibliothèque de favoris conserve l'identifiant du flux ; si l'ID change, modifiez le favori. Aucun contrôle de disponibilité continu.
 - Le CDN hls.js requiert un accès réseau du navigateur (HLS natif utilisable sur Safari) ; on pourra embarquer hls.js pour une future version entièrement hors ligne.
+- Le mode paysage Android agrandit automatiquement le lecteur à toute la surface disponible, mais ne peut pas toujours masquer les barres système/navigation sans geste utilisateur, restriction imposée par le navigateur.
 - Le VPN et le moteur doivent être réellement testés dans votre stack : cette version a été testée en local avec des API simulées, pas avec vos identifiants Proton.
 
 ## Développement
