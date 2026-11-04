@@ -1,4 +1,4 @@
-# AceStream Web 0.3.3 — Tableau de bord Docker
+# AceStream Web 0.3.4 — Tableau de bord Docker
 
 Interface Web **auto-hébergée** pour consulter et lire des flux Ace Stream autorisés, avec interface responsive, comptes utilisateurs, favoris privés, recherche et monitoring Gluetun/Proton VPN.
 
@@ -96,6 +96,10 @@ La version 0.3.3 ajoute un favicon classique `/favicon.ico`, un PNG 32×32, une 
 - Depuis Opera pour Android, si le raccourci **Accès rapide / Speed Dial** a déjà été créé, le supprimer puis le recréer pour demander au navigateur de recalculer la vignette. Certains raccourcis Speed Dial utilisent une capture de page ou une vignette sélectionnée par Opera, pas le favicon ; leur rendu ne peut donc pas être garanti depuis le site.
 - Les **raccourcis d'écran d'accueil Android** et les **installations PWA** sont différents des raccourcis Speed Dial. Une véritable installation PWA nécessite normalement HTTPS, à la différence d'un simple accès HTTP dans ton LAN.
 - Si l'ancienne icône persiste, visiter directement `http://IP_DU_SERVEUR:8087/static/icon-192.png` pour vérifier la ressource, puis recharger et recréer le raccourci. Les URL d'icônes comportent un paramètre de version pour limiter le cache du navigateur.
+
+### Affichage sur Android (v0.3.4)
+
+En portrait, les cartes **Lecteur vidéo**, **Recherche**, **Favoris**, **VPN**, **Moteur**, **Diffusion** et **Mon compte** occupent toutes 100 % de la largeur disponible dans le conteneur principal, avec la même petite marge latérale. Les grilles utilisent `minmax(0, 1fr)` pour empêcher la largeur minimale du contenu de recherche d'élargir une carte au-delà de l'écran. Le CSS est chargé avec un paramètre de version pour limiter le cache mobile. En paysage lors d'une lecture, le comportement d'agrandissement vidéo automatique est inchangé.
 
 ### Limites connues
 

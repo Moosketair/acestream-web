@@ -311,4 +311,24 @@ class DashboardTests(unittest.TestCase):
                     (url.endswith('.ico') and data[:4] == bytes((0, 0, 1, 0)))
                 )
 
+    def test_mobile_dashboard_cards_share_full_available_width(self):
+        html = self.client.get('/').get_data(as_text=True)
+        self.assertIn('href="/static/app.css?v=0.3.4"', html)
+
+        response = self.client.get('/static/app.css')
+        self.assertEqual(response.status_code, 200)
+        css = response.get_data(as_text=True)
+        self.assertIn('Mobile: make all dashboard cards use exactly the same available width', css)
+        self.assertIn('grid-template-columns:minmax(0,1fr)', css)
+        for selector in (
+            '.dashboard-grid > .left-column',
+            '.dashboard-grid > .right-column',
+            '.dashboard-grid .panel',
+            '.dashboard-details .panel',
+            '.dashboard-details .metric-card',
+        ):
+            self.assertIn(selector, css)
+        self.assertIn('align-items:stretch;', css)
+        self.assertIn('max-width:100%;', css)
+
 if __name__ == '__main__':unittest.main()
