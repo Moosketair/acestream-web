@@ -95,7 +95,7 @@ class StreamManager:
             tail = ""
         # FFmpeg logs sometimes echo the internal URL including a Content ID.
         sanitized = re.sub(r"(?i)([?&](?:id|infohash|content_id)=)[0-9a-f]{40}",
-                           r"\\1[REDACTED]", tail)
+                           r"\g<1>[REDACTED]", tail)
         diagnostic = " | ".join(line.strip() for line in sanitized.splitlines()[-8:])
         logging.warning("AceStream FFmpeg exited (code=%s). Last output: %s",
                         returncode, diagnostic[:1300] or "(aucun message)")
