@@ -185,8 +185,8 @@ class DashboardTests(unittest.TestCase):
         self.assertIn('id="videoLoading"', html)
         self.assertIn('id="videoLoadingLabel"', html)
         self.assertIn('id="fullscreenBtn"', html)
-        self.assertIn('href="/static/favicon.svg"', html)
-        self.assertIn('href="/static/site.webmanifest"', html)
+        self.assertIn('href="/static/favicon.svg?v=4"', html)
+        self.assertIn('href="/static/site.webmanifest?v=4"', html)
 
         js = self.client.get('/static/app.js').get_data(as_text=True)
         self.assertIn("addEventListener('playing'", js)
