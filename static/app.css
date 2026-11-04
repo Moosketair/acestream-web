@@ -23,3 +23,17 @@ body.android-landscape-video{overflow:hidden!important}
 body.android-landscape-video .video-frame{position:fixed!important;inset:0!important;width:100vw;width:100dvw;height:100vh;height:100dvh;max-width:none;max-height:none;aspect-ratio:auto;border:0;border-radius:0;background:black;z-index:1000}
 body.android-landscape-video .video-frame video{object-fit:contain}
 body.android-landscape-video .fullscreen-action{top:max(12px,env(safe-area-inset-top));right:max(12px,env(safe-area-inset-right))}
+
+
+/* Search source switcher for the engine API and public playlist. */
+.search-options{display:flex;align-items:center;justify-content:flex-start;gap:12px;flex-wrap:wrap;margin:11px 0 5px;color:#a6b8d2;font-size:.78rem}
+.search-options label{font-weight:650}
+.search-options select{max-width:100%;min-width:190px;padding:7px 11px;background:#0d1627;color:var(--text);border:1px solid #3a4a63;border-radius:8px;outline-offset:2px}
+.result-availability{color:var(--green);font-weight:650}
+.result-availability.low{color:var(--amber)}
+/* Native video PiP is browser controlled and may require HTTPS or permission. */
+.pip-action{position:absolute;z-index:7;right:62px;top:12px;width:42px;height:42px;display:grid;place-items:center;background:#0a1121c9;color:white;border:1px solid #ffffff60;border-radius:10px;backdrop-filter:blur(7px);transition:background .16s}
+.pip-action:hover,.pip-action:focus-visible{background:#51409a}
+.pip-action:disabled{opacity:.45;cursor:not-allowed}
+.pip-action svg{width:23px;height:23px}
+body.android-landscape-video .pip-action{top:max(12px,env(safe-area-inset-top));right:calc(max(12px,env(safe-area-inset-right)) + 50px)}
