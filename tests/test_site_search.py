@@ -50,7 +50,7 @@ class SiteSearchTests(unittest.TestCase):
     def test_invalid_items_and_control_characters_are_removed(self):
         payload = json.dumps([None, 23, {
             "content_id": HASH_1.upper(),
-            "name": "\\u202eRennes\\u0000 live"
+            "name": chr(0x202e) + "Rennes" + chr(0) + " live"
         }]).encode()
         with patch("search_sources.requests.get", return_value=Response(payload)):
             results, _total, _warning = SiteSearch().search("  ren\u202enes  ")
