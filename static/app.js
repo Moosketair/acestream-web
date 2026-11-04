@@ -29,6 +29,9 @@ function showAuth(){
   $('setupField').hidden=appState.configured;
   $('authSubmit').textContent=appState.configured?'Se connecter':'Initialiser l’application';
   $('authPassword').setAttribute('autocomplete',appState.configured?'current-password':'new-password');
+  // En connexion, ne pas bloquer un ancien compte dont le mot de passe serait plus court.
+  // Pour créer un compte, le serveur et le formulaire imposent 10 caractères minimum.
+  $('authPassword').minLength=appState.configured?0:10;
   $('authUsername').focus();
 }
 async function bootstrap(){
