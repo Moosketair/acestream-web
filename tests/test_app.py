@@ -110,4 +110,41 @@ class DashboardTests(unittest.TestCase):
         self.assertEqual(data.get_json()['results'][0]['name'],'Radio TV')
         self.assertEqual(self.client.get('/api/search?q=a').status_code,400)
 
+
+    def test_password_minimum_ten_on_setup(self):
+        payload = {'setup_token': 'testonly-_secret-key-of-32-characters-abcd',
+                   'username': 'minimum10', 'password': 'abcdefghi'}
+        self.assertEqual(self.post('/api/auth/setup', payload).status_code, 400)
+        payload['password'] = 'abcdefghij'
+        accepted = self.post('/api/auth/setup', payload)
+        self.assertEqual(accepted.status_code, 201, accepted.get_data(as_text=True))
+        self.assertEqual(accepted.get_json()['user']['username'], 'minimum10')
+
+    def test_password_minimum_ten_for_new_users_and_password_changes(self):
+        self.setup_admin()
+        rejected = self.post('/api/users', {'username':'tester10', 'password':'abcdefghi'})
+        self.assertEqual(rejected.status_code, 400)
+        created = self.post('/api/users', {'username':'tester10', 'password':'abcdefghij'})
+        self.assertEqual(created.status_code, 201, created.get_data(as_text=True))
+        rejected_change = self.post('/api/auth/password', {
+            'old_password':'superlongtestpassword!', 'new_password':'abcdefghi'})
+        self.assertEqual(rejected_change.status_code, 400)
+        changed = self.post('/api/auth/password', {
+            'old_password':'superlongtestpassword!', 'new_password':'0123456789'})
+        self.assertEqual(changed.status_code, 200, changed.get_data(as_text=True))
+        self.assertEqual(self.post('/api/auth/logout').status_code, 200)
+        self.csrf = self.client.get('/api/auth/session').get_json()['csrf']
+        login = self.post('/api/auth/login', {'username':'Moosketair', 'password':'0123456789'})
+        self.assertEqual(login.status_code, 200, login.get_data(as_text=True))
+
+    def test_dashboard_reorder_player_search_favorites_then_status_cards(self):
+        html = self.client.get('/').get_data(as_text=True)
+        elements = ('class="panel player-panel"', 'class="panel search-panel"',
+                    'class="panel favorites-panel"', 'class="dashboard-details"',
+                    'class="metrics"')
+        indexes = [html.index(element) for element in elements]
+        self.assertEqual(indexes, sorted(indexes))
+        self.assertIn('minlength="10"', html)
+        self.assertNotIn('minlength="12"', html)
+
 if __name__ == '__main__':unittest.main()
