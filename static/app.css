@@ -37,3 +37,8 @@ body.android-landscape-video .fullscreen-action{top:max(12px,env(safe-area-inset
 .pip-action:disabled{opacity:.45;cursor:not-allowed}
 .pip-action svg{width:23px;height:23px}
 body.android-landscape-video .pip-action{top:max(12px,env(safe-area-inset-top));right:calc(max(12px,env(safe-area-inset-right)) + 50px)}
+
+/* A real image in the branding also provides a thumbnail candidate for Opera Speed Dial. */
+.brand-icon,.auth-logo{overflow:hidden}
+.brand-icon img{display:block;width:39px;height:39px;border-radius:12px;object-fit:cover}
+.auth-logo img{display:block;width:58px;height:58px;border-radius:17px;object-fit:cover}

@@ -285,4 +285,28 @@ class DashboardTests(unittest.TestCase):
         css = self.client.get('/static/app.css').get_data(as_text=True)
         self.assertIn('.pip-action', css)
 
+
+    def test_browser_icons_for_opera_android(self):
+        page = self.client.get('/').get_data(as_text=True)
+        self.assertIn('rel="shortcut icon"', page)
+        self.assertIn('favicon-32.png', page)
+        self.assertIn('apple-touch-icon.png', page)
+        self.assertIn('icon-192.png', page)
+
+        manifest = self.client.get('/static/site.webmanifest').get_json()
+        self.assertEqual(manifest['short_name'], 'AceStream')
+        png_icons = {(i['sizes'], i['type']) for i in manifest['icons']}
+        self.assertIn(('192x192', 'image/png'), png_icons)
+        self.assertIn(('512x512', 'image/png'), png_icons)
+
+        for url in ('/favicon.ico', '/apple-touch-icon.png',
+                    '/static/favicon-32.png', '/static/icon-192.png',
+                    '/static/icon-512.png'):
+            with self.subTest(url=url):
+                response = self.client.get(url)
+                self.assertEqual(response.status_code, 200, url)
+                data = response.get_data()
+                self.assertTrue(data.startswith(b'\\x89PNG\\r\\n\\x1a\\n') or
+                                (url.endswith('.ico') and data[:4] == b'\\x00\\x00\\x01\\x00'))
+
 if __name__ == '__main__':unittest.main()

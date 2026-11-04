@@ -209,6 +209,14 @@ def create_app(config=None):
     def homepage():
         return render_template("index.html")
 
+    @app.get("/favicon.ico")
+    def site_favicon():
+        return send_from_directory(app.static_folder, "favicon.ico", mimetype="image/vnd.microsoft.icon")
+
+    @app.get("/apple-touch-icon.png")
+    def site_touch_icon():
+        return send_from_directory(app.static_folder, "apple-touch-icon.png", mimetype="image/png")
+
     @app.get("/api/health")
     def health():
         return jsonify(status="ok")

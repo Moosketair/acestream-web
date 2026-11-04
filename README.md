@@ -1,4 +1,4 @@
-# AceStream Web 0.3.2 — Tableau de bord Docker
+# AceStream Web 0.3.3 — Tableau de bord Docker
 
 Interface Web **auto-hébergée** pour consulter et lire des flux Ace Stream autorisés, avec interface responsive, comptes utilisateurs, favoris privés, recherche et monitoring Gluetun/Proton VPN.
 
@@ -88,6 +88,14 @@ Si le lecteur affiche une erreur, ouvre **Dockge → acestream-test → conteneu
 Le fait qu'un événement apparaisse dans les recherches ne garantit pas qu'il y ait des pairs actifs ni que le flux soit encore valide. Pour isoler la cause, essayer un autre flux autorisé connu comme fonctionnel. La recherche du site est effectuée hors VPN, mais **le moteur Ace Stream et son trafic P2P restent derrière Gluetun**.
 
 Les anciens favoris provenant d'un **infohash** et créés avant la 0.3.2 étaient sauvegardés comme de simples hashes. Si un tel favori échoue après la mise à jour, ouvre-le et remplace son identifiant par `acestream://?infohash=LE_HASH` (ou recrée le favori depuis les résultats de l'index du moteur).
+
+### Icônes Opera Android et raccourcis
+
+La version 0.3.3 ajoute un favicon classique `/favicon.ico`, un PNG 32×32, une icône Apple Touch 180×180 et deux icônes Android 192×192 / 512×512 dans le manifeste, tout en conservant le SVG. L'icône AceStream Web est aussi affichée comme image sur les pages d'accueil et de connexion pour faciliter la création de vignettes par les navigateurs.
+
+- Depuis Opera pour Android, si le raccourci **Accès rapide / Speed Dial** a déjà été créé, le supprimer puis le recréer pour demander au navigateur de recalculer la vignette. Certains raccourcis Speed Dial utilisent une capture de page ou une vignette sélectionnée par Opera, pas le favicon ; leur rendu ne peut donc pas être garanti depuis le site.
+- Les **raccourcis d'écran d'accueil Android** et les **installations PWA** sont différents des raccourcis Speed Dial. Une véritable installation PWA nécessite normalement HTTPS, à la différence d'un simple accès HTTP dans ton LAN.
+- Si l'ancienne icône persiste, visiter directement `http://IP_DU_SERVEUR:8087/static/icon-192.png` pour vérifier la ressource, puis recharger et recréer le raccourci. Les URL d'icônes comportent un paramètre de version pour limiter le cache du navigateur.
 
 ### Limites connues
 
