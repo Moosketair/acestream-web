@@ -178,4 +178,61 @@ class DashboardTests(unittest.TestCase):
         self.assertEqual(manifest.status_code, 200)
         self.assertEqual(manifest.get_json()['short_name'], 'AceStream')
 
+
+    def test_search_sources_engine_playlist_and_merged_results(self):
+        self.setup_admin()
+        import requests
+        from unittest.mock import patch
+        class VPNResponse:
+            def raise_for_status(self): pass
+            def json(self): return {"status": "running"}
+        # Stub the VPN check: the engine's public network is never accessed.
+        engine_item = {"name": "Chaîne API", "category": "tv", "content_id": HASH,
+                       "source": "API Ace Stream", "status": 2}
+        playlist_item = {"name": "Chaîne playlist", "category": "tv", "content_id": HASH,
+                         "source": "search-ace.stream"}
+        with (patch('app.requests.get', return_value=VPNResponse()),
+              patch.object(self.app.extensions['engine_search'], 'search',
+                           return_value=([engine_item], 1, None)) as engine,
+              patch.object(self.app.extensions['playlist_search'], 'search',
+                           return_value=([playlist_item], 1, None)) as playlist):
+            merged = self.client.get('/api/search?q=chaine&source=all')
+            self.assertEqual(merged.status_code, 200, merged.get_data(as_text=True))
+            self.assertEqual(len(merged.get_json()['results']), 1)
+            self.assertEqual(merged.get_json()['results'][0]['source'], 'API Ace Stream')
+            self.assertEqual(merged.get_json()['results'][0]['status'], 2)
+            self.assertEqual(merged.get_json()['sources'], ['API Ace Stream','search-ace.stream'])
+            eng = self.client.get('/api/search?q=chaine&source=engine')
+            self.assertEqual(eng.status_code, 200)
+            self.assertEqual(eng.get_json()['sources'], ['API Ace Stream'])
+            full = self.client.get('/api/search?q=chaine&source=playlist')
+            self.assertEqual(full.status_code, 200)
+            self.assertEqual(full.get_json()['sources'], ['search-ace.stream'])
+            self.assertEqual(self.client.get('/api/search?q=chaine&source=evil').status_code, 400)
+            self.assertEqual(engine.call_count, 2)
+            self.assertEqual(playlist.call_count, 2)
+
+    def test_search_engine_unavailable_fails_gracefully(self):
+        self.setup_admin()
+        import requests
+        with (patch('app.requests.get', side_effect=requests.ConnectionError()),
+              patch.object(self.app.extensions['playlist_search'], 'search',
+                           return_value=([], 0, None))):
+            result = self.client.get('/api/search?q=test&source=all')
+            self.assertEqual(result.status_code, 200)
+            self.assertIn('VPN indisponible', result.get_json()['warning'])
+            only_engine = self.client.get('/api/search?q=test&source=engine')
+            self.assertEqual(only_engine.status_code, 503)
+
+    def test_pip_button_and_source_selectors(self):
+        html = self.client.get('/').get_data(as_text=True)
+        for id_ in ('pipBtn', 'searchSourceSelect', 'searchSourceSelect2'):
+            self.assertIn(f'id="{id_}"', html)
+        js = self.client.get('/static/app.js').get_data(as_text=True)
+        self.assertIn("setActionHandler('enterpictureinpicture'", js)
+        self.assertIn("addEventListener('visibilitychange'", js)
+        self.assertIn("requestPictureInPicture()", js)
+        css = self.client.get('/static/app.css').get_data(as_text=True)
+        self.assertIn('.pip-action', css)
+
 if __name__ == '__main__':unittest.main()
