@@ -27,11 +27,12 @@ http://www.example.org/?id=notahash
         self.assertIsNone(extract_hash('file:///etc/passwd?id='+HASH_A))
         self.assertIsNone(extract_hash('http://127.0.0.1:6878/ace/getstream?id=123'))
     def test_parse_manual_links(self):
-        self.assertEqual(parse_content(HASH_A),('infohash',HASH_A))
-        self.assertEqual(parse_content('acestream://'+HASH_B),('infohash',HASH_B))
+        self.assertEqual(parse_content(HASH_A),('id',HASH_A))
+        self.assertEqual(parse_content('acestream://'+HASH_B),('id',HASH_B))
         self.assertEqual(parse_content('http://localhost/ace/getstream?id='+HASH_A),('id',HASH_A))
         self.assertEqual(parse_content('http://localhost/ace/getstream?content_id='+HASH_B),('content_id',HASH_B))
         self.assertEqual(parse_content('acestream://?infohash='+HASH_B),('infohash',HASH_B))
+        self.assertEqual(parse_content('http://localhost/ace/getstream?infohash='+HASH_A),('infohash',HASH_A))
         self.assertEqual(parse_content('garbage'),(None,None))
     def test_normalize_french(self):
         self.assertEqual(normalize('TÉLÉVISION'), 'television')
