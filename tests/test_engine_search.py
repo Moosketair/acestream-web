@@ -37,6 +37,7 @@ class EngineSearchTests(unittest.TestCase):
         self.assertIsNone(warning)
         self.assertEqual(results[0]["name"], "TV Info HD")
         self.assertEqual(results[0]["content_id"], GOOD_HASH)
+        self.assertEqual(results[0]["playback_ref"], "acestream://?infohash="+GOOD_HASH)
         self.assertEqual(results[0]["status"], 2)
         self.assertEqual(results[0]["availability"], 0.95)
         self.assertEqual(results[1]["source"], "API Ace Stream")
