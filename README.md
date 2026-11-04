@@ -1,4 +1,4 @@
-# AceStream Web 0.3.1 — Tableau de bord Docker
+# AceStream Web 0.3.2 — Tableau de bord Docker
 
 Interface Web **auto-hébergée** pour consulter et lire des flux Ace Stream autorisés, avec interface responsive, comptes utilisateurs, favoris privés, recherche et monitoring Gluetun/Proton VPN.
 
@@ -63,6 +63,7 @@ Les requêtes sortantes faites **par l'interface Web** (par exemple le télécha
 - **Recherche multi-sources corrigée (0.3.1)** : par défaut, la recherche utilise directement l'index du site search-ace.stream via son endpoint JSON fixe `https://search-ace.stream/search?query=...` (côté serveur Web, hors VPN). Cela permet d'obtenir les événements récents affichés sur le site, à la différence de l'index P2P Ace Stream. Le menu propose `Recherche du site (événements)`, `Toutes les sources`, `Index du moteur (P2P)` et `Playlist du site`. L'index moteur interroge `/search` et l'ancien `/server/api` via Gluetun ; la playlist M3U du site reste mise en cache pendant **20 minutes**. Les résultats sont dédoublonnés par identifiant lorsque plusieurs sources sont sélectionnées. L'endpoint du site est fixe, les redirections refusées, la taille de réponse limitée à 256 Ko et les identifiants de flux validés avant affichage. Si une source échoue, les autres restent utilisables. Les résultats n'assurent pas que la diffusion est fonctionnelle.
 - Monitoring à partir des API Gluetun (`/v1/vpn/status`, `/v1/publicip/ip`) et Ace Stream (`get_version`). Les valeurs non disponibles sont affichées comme telles — aucun débit ou pays fictif.
 - Lecture HLS via FFmpeg ; autorisations sur chaque playlist et chaque segment.
+- **Correctif lecture 0.3.2** : les Content IDs issus de la recherche du site utilisent désormais `/ace/getstream?id=...` (au lieu de `infohash=...`). Les liens explicitement identifiés comme `infohash` conservent ce paramètre, y compris dans les favoris et l'historique. Les erreurs de démarrage FFmpeg sont journalisées avec les identifiants masqués et un message plus explicite dans l'interface.
 - Hash brut, URI `acestream://` et liens `infohash`, `id`, `content_id`.
 
 ### Source de recherche et test rapide
@@ -79,6 +80,14 @@ Les requêtes sortantes faites **par l'interface Web** (par exemple le télécha
 - Le PiP automatique lorsque l'onglet devient masqué repose sur le navigateur : en général, l'API Web PiP exige un geste utilisateur, et l'API Media Session n'autorise l'ouverture automatique que dans certaines conditions. Sur certains navigateurs Android, il faudra utiliser le **bouton PiP** avant de quitter l'application, ou passer par les contrôles vidéo natifs.
 - Autorisez l'application du navigateur à utiliser Picture-in-Picture dans les paramètres Android. Pour obtenir le meilleur support de l'API Web PiP, utilisez l'interface via **HTTPS** ; `http://IP_DU_SERVEUR:8088` peut ne pas être éligible aux API sécurisées.
 - Le bouton PiP ne démarre pas de vidéo : une lecture doit déjà être en cours. Le mode paysage plein écran reste indépendant du PiP.
+
+### Dépannage : échec de démarrage FFmpeg
+
+Si le lecteur affiche une erreur, ouvre **Dockge → acestream-test → conteneur acestream-web → Logs**. Les dernières erreurs FFmpeg sont remontées dans ces journaux avant nettoyage des fichiers temporaires. Les erreurs HTTP 404/500, accès refusé et impossibilité de joindre le moteur sont distinguées dans l'interface.
+
+Le fait qu'un événement apparaisse dans les recherches ne garantit pas qu'il y ait des pairs actifs ni que le flux soit encore valide. Pour isoler la cause, essayer un autre flux autorisé connu comme fonctionnel. La recherche du site est effectuée hors VPN, mais **le moteur Ace Stream et son trafic P2P restent derrière Gluetun**.
+
+Les anciens favoris provenant d'un **infohash** et créés avant la 0.3.2 étaient sauvegardés comme de simples hashes. Si un tel favori échoue après la mise à jour, ouvre-le et remplace son identifiant par `acestream://?infohash=LE_HASH` (ou recrée le favori depuis les résultats de l'index du moteur).
 
 ### Limites connues
 
