@@ -142,8 +142,8 @@ document.addEventListener('click',event=>{
  const viewButton=event.target.closest('[data-view]');if(viewButton){switchView(viewButton.dataset.view);return;}
  const control=event.target.closest('[data-action]');if(!control)return;
  const action=control.dataset.action, id=control.dataset.id;
- if(action==='play-result'){ const entry=appState.results.find(r=>r.content_id===id);if(entry){switchView('dashboard');play(entry.content_id,entry.name);} }
- else if(action==='star-result'){const entry=appState.results.find(r=>r.content_id===id);const existing=appState.favorites.find(f=>f.content_id===id);if(existing)openFavorite(existing);else if(entry)openFavorite({content_id:entry.content_id,name:entry.name,group_name:entry.category||'Mes favoris'});}
+ if(action==='play-result'){ const entry=appState.results.find(r=>r.content_id===id);if(entry){switchView('dashboard');play(entry.playback_ref||entry.content_id,entry.name);} }
+ else if(action==='star-result'){const entry=appState.results.find(r=>r.content_id===id);const ref=entry?.playback_ref||id;const existing=appState.favorites.find(f=>f.content_id===ref);if(existing)openFavorite(existing);else if(entry)openFavorite({content_id:ref,name:entry.name,group_name:entry.category||'Mes favoris'});}
  else if(action==='play-favorite'){const entry=appState.favorites.find(f=>String(f.id)===id);if(entry){switchView('dashboard');play(entry.content_id,entry.name);}}
  else if(action==='edit-favorite'){const entry=appState.favorites.find(f=>String(f.id)===id);if(entry)openFavorite(entry);}
  else if(action==='delete-favorite'){deleteFavorite(id);}
@@ -197,7 +197,7 @@ function renderSearch(results){
  const html=results.length?results.map(entry=>{
    const availability=entry.status===2?' · Disponible (estimation API)':entry.status===1?' · Disponibilité incertaine':'';
    const translation=entry.translated_name && entry.translated_name!==entry.name?` · ${entry.translated_name}`:'';
-   return `<div class="result-item"><div class="result-symbol">${icons('monitor')}</div><div class="item-body"><strong title="${escapeHTML(entry.name)}">${escapeHTML(entry.name)}</strong><small>${escapeHTML(entry.category||'Divers')} · ${escapeHTML(entry.source||'Source externe')}${escapeHTML(translation)}${escapeHTML(availability)}</small></div><div class="item-actions"><button class="tiny-btn star" title="${ids.has(entry.content_id)?'Déjà dans les favoris':'Ajouter aux favoris'}" data-action="star-result" data-id="${entry.content_id}">${icons('star')}</button><button class="tiny-btn play" title="Lire" data-action="play-result" data-id="${entry.content_id}">${icons('play')}</button></div></div>`;
+   return `<div class="result-item"><div class="result-symbol">${icons('monitor')}</div><div class="item-body"><strong title="${escapeHTML(entry.name)}">${escapeHTML(entry.name)}</strong><small>${escapeHTML(entry.category||'Divers')} · ${escapeHTML(entry.source||'Source externe')}${escapeHTML(translation)}${escapeHTML(availability)}</small></div><div class="item-actions"><button class="tiny-btn star" title="${ids.has(entry.playback_ref||entry.content_id)?'Déjà dans les favoris':'Ajouter aux favoris'}" data-action="star-result" data-id="${entry.content_id}">${icons('star')}</button><button class="tiny-btn play" title="Lire" data-action="play-result" data-id="${entry.content_id}">${icons('play')}</button></div></div>`;
  }).join(''):'<div class="empty mini">Aucun résultat trouvé pour cette recherche.</div>';
  $('searchResults').innerHTML=html;$('searchResults2').innerHTML=html;
 }
