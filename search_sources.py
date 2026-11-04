@@ -184,7 +184,7 @@ class EngineSearch:
             try:
                 return (*self._legacy_search(text, limit), None)
             except (requests.RequestException, ValueError, TypeError, KeyError) as exc:
-                raise RuntimeError("Recherche API Ace Stream non disponible sur ce moteur.") from exc
+                raise RuntimeError("Recherche API Ace Stream indisponible sur ce moteur.") from exc
 
 
 # This upstream has its OWN searchable catalogue. It is not the Ace Stream
