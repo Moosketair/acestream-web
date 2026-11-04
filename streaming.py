@@ -37,6 +37,10 @@ class StreamManager:
     def __init__(self, root, engine, max_streams=3):
         self.root = Path(root)
         self.root.mkdir(parents=True, exist_ok=True)
+        # In-memory process tracking is intentionally single-worker; remove stale HLS files on restart.
+        for old in self.root.iterdir():
+            if old.is_dir():
+                shutil.rmtree(old, ignore_errors=True)
         self.engine = engine.rstrip("/")
         self.max_streams = max_streams
         self.lock = threading.RLock()

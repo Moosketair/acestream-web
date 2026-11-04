@@ -47,7 +47,7 @@ $('authForm').addEventListener('submit',async(event)=>{
   const body={username:$('authUsername').value.trim(),password:$('authPassword').value};
   if(!appState.configured)body.setup_token=$('authSetupToken').value;
   const data=await api(appState.configured?'/api/auth/login':'/api/auth/setup',{method:'POST',body});
-  appState.csrf=data.csrf;appState.configured=true;appState.user=data.user;$('authPassword').value='';$('authSetupToken').value='';
+  appState.csrf=data.csrf;appState.configured=true;appState.user=data.user;appState.view='dashboard';appState.results=[];appState.users=[];appState.history=[];$('authPassword').value='';$('authSetupToken').value='';
   await bootstrap();toast(`Bienvenue ${data.user.username} !`);
  }catch(err){$('authError').textContent=err.message;}finally{setBusy(false);}
 });
@@ -68,7 +68,7 @@ document.addEventListener('click',event=>{
  const control=event.target.closest('[data-action]');if(!control)return;
  const action=control.dataset.action, id=control.dataset.id;
  if(action==='play-result'){ const entry=appState.results.find(r=>r.content_id===id);if(entry)play(entry.content_id,entry.name); }
- else if(action==='star-result'){const entry=appState.results.find(r=>r.content_id===id);if(entry)openFavorite({content_id:entry.content_id,name:entry.name,group_name:entry.category||'Mes favoris'});}
+ else if(action==='star-result'){const entry=appState.results.find(r=>r.content_id===id);const existing=appState.favorites.find(f=>f.content_id===id);if(existing)openFavorite(existing);else if(entry)openFavorite({content_id:entry.content_id,name:entry.name,group_name:entry.category||'Mes favoris'});}
  else if(action==='play-favorite'){const entry=appState.favorites.find(f=>String(f.id)===id);if(entry){switchView('dashboard');play(entry.content_id,entry.name);}}
  else if(action==='edit-favorite'){const entry=appState.favorites.find(f=>String(f.id)===id);if(entry)openFavorite(entry);}
  else if(action==='delete-favorite'){deleteFavorite(id);}
@@ -83,7 +83,7 @@ async function monitor(showError=false){
  try{
   const info=await api('/api/monitor');const {vpn,engine}=info;
   $('vpnText').textContent=vpn.connected?'Tunnel WireGuard actif':'Tunnel interrompu ou inaccessible';
-  $('vpnIp').textContent=vpn.public_ip||'Non disponible';$('vpnGuard').textContent=vpn.connected?'Vérifié · coupe-circuit Gluetun':'Lecture bloquée';
+  $('vpnIp').textContent=vpn.public_ip||'Non disponible';$('vpnGuard').textContent=vpn.connected?'Contrôlée par Gluetun':'Lecture bloquée';
   $('vpnPill').textContent=vpn.connected?'Connecté':'Déconnecté';$('vpnPill').className=`pill ${vpn.connected?'':'bad'}`;
   $('vpnDot').className=`status-dot ${vpn.connected?'good':'bad'}`;
   $('topVpn').innerHTML=`<span class="status-dot ${vpn.connected?'good':'bad'}"></span>${vpn.connected?'VPN connecté':'VPN indisponible'}`;
@@ -171,7 +171,8 @@ $('passwordForm').addEventListener('submit',async event=>{event.preventDefault()
  }catch(err){toast(err.message,true);}});
 async function signOut(){try{
  if(appState.stream)await stopStream();await api('/api/auth/logout',{method:'POST'});
- appState.user=null;appState.stream=null;appState.favorites=[];appState.results=[];await bootstrap();
+ appState.user=null;appState.stream=null;appState.favorites=[];appState.results=[];appState.history=[];appState.users=[];appState.view='dashboard';
+ $('usersList').replaceChildren();$('historyList').replaceChildren();$('searchResults').replaceChildren();$('searchResults2').replaceChildren();$('favoritesList').replaceChildren();$('favoritesFullList').replaceChildren();await bootstrap();
  }catch(err){toast(err.message,true);}}
 $('logoutButton').addEventListener('click',signOut);
 function resetVideo(){const video=$('video');if(appState.hls){appState.hls.destroy();appState.hls=null;}video.pause();video.removeAttribute('src');video.load();$('videoPlaceholder').hidden=false;}

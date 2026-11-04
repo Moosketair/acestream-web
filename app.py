@@ -191,7 +191,11 @@ def create_app(config=None):
     def watcher():
         while True:
             time.sleep(5)
-            if manager.list(admin=True) and not vpn_status(refresh=True)["connected"]:
+            active = manager.list(admin=True)
+            for item in active:
+                if time.time() - item["created"] > 6 * 3600:
+                    manager.stop(item["stream_id"])
+            if active and not vpn_status(refresh=True)["connected"]:
                 manager.stop_all()
 
     if not app.config.get("TESTING"):
