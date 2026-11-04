@@ -138,8 +138,11 @@ class EngineSearch:
                 name = item.get("name") or group.get("name") or "Sans titre"
                 categories = item.get("categories") or group.get("categories") or []
                 category = categories[0] if isinstance(categories, list) and categories else "Divers"
+                # Engine search returns an infohash, not a Content ID.
+                # Keep it explicit so playback and user favorites use infohash=.
                 entry = {"name": str(name)[:180], "category": str(category)[:80],
-                         "content_id": content_id, "source": "API Ace Stream"}
+                         "content_id": content_id, "source": "API Ace Stream",
+                         "playback_ref": "acestream://?infohash=" + content_id}
                 status = item.get("status")
                 if isinstance(status, int) and not isinstance(status, bool) and status in (1, 2):
                     entry["status"] = status
