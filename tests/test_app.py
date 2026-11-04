@@ -105,7 +105,7 @@ class DashboardTests(unittest.TestCase):
         self.setup_admin()
         searcher=self.app.extensions['playlist_search']
         with patch.object(searcher,'search',return_value=([{'name':'Radio TV','category':'Divers','content_id':HASH,'source':'search-ace.stream'}],1,None)):
-            data=self.client.get('/api/search?q=radio')
+            data=self.client.get('/api/search?q=radio&source=playlist')
         self.assertEqual(data.status_code,200)
         self.assertEqual(data.get_json()['results'][0]['name'],'Radio TV')
         self.assertEqual(self.client.get('/api/search?q=a').status_code,400)
@@ -195,22 +195,42 @@ class DashboardTests(unittest.TestCase):
               patch.object(self.app.extensions['engine_search'], 'search',
                            return_value=([engine_item], 1, None)) as engine,
               patch.object(self.app.extensions['playlist_search'], 'search',
-                           return_value=([playlist_item], 1, None)) as playlist):
+                           return_value=([playlist_item], 1, None)) as playlist,
+              patch.object(self.app.extensions['site_search'], 'search',
+                           return_value=([], 0, None)) as site):
             merged = self.client.get('/api/search?q=chaine&source=all')
             self.assertEqual(merged.status_code, 200, merged.get_data(as_text=True))
             self.assertEqual(len(merged.get_json()['results']), 1)
             self.assertEqual(merged.get_json()['results'][0]['source'], 'API Ace Stream')
             self.assertEqual(merged.get_json()['results'][0]['status'], 2)
-            self.assertEqual(merged.get_json()['sources'], ['API Ace Stream','search-ace.stream'])
+            self.assertEqual(merged.get_json()['sources'],
+                             ['Site search-ace.stream', 'API moteur Ace Stream', 'Playlist search-ace.stream'])
             eng = self.client.get('/api/search?q=chaine&source=engine')
             self.assertEqual(eng.status_code, 200)
-            self.assertEqual(eng.get_json()['sources'], ['API Ace Stream'])
+            self.assertEqual(eng.get_json()['sources'], ['API moteur Ace Stream'])
             full = self.client.get('/api/search?q=chaine&source=playlist')
             self.assertEqual(full.status_code, 200)
-            self.assertEqual(full.get_json()['sources'], ['search-ace.stream'])
+            self.assertEqual(full.get_json()['sources'], ['Playlist search-ace.stream'])
             self.assertEqual(self.client.get('/api/search?q=chaine&source=evil').status_code, 400)
             self.assertEqual(engine.call_count, 2)
             self.assertEqual(playlist.call_count, 2)
+            self.assertEqual(site.call_count, 1)
+
+    def test_search_site_matches_website_without_engine_or_vpn(self):
+        self.setup_admin()
+        import requests
+        site_item = {"name": "Rennes - Olympiacos (English)",
+                     "category": "Diffusion", "content_id": HASH,
+                     "source": "Site search-ace.stream"}
+        with (patch('app.requests.get', side_effect=requests.ConnectionError()),
+              patch.object(self.app.extensions['site_search'], 'search',
+                           return_value=([site_item], 1, None)) as site):
+            result = self.client.get('/api/search?q=rennes&source=site')
+        self.assertEqual(result.status_code, 200)
+        self.assertEqual(result.get_json()['total'], 1)
+        self.assertEqual(result.get_json()['results'][0]['name'], 'Rennes - Olympiacos (English)')
+        self.assertEqual(result.get_json()['sources'], ['Site search-ace.stream'])
+        site.assert_called_once_with('rennes')
 
     def test_search_engine_unavailable_fails_gracefully(self):
         self.setup_admin()
