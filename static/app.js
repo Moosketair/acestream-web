@@ -4,6 +4,77 @@ const icons = (name) => `<svg aria-hidden="true"><use href="#i-${name}"></use></
 const escapeHTML = (text) => String(text ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 const appState = {csrf:'',user:null,configured:false,favorites:[],results:[],history:[],users:[],stream:null,hls:null,view:'dashboard',busy:false};
 let toastTimer = null;
+
+// On Android, a rotation alone cannot reliably activate browser fullscreen:
+// browsers often require a fresh user gesture. Fill the viewport automatically,
+// and attempt native fullscreen when the browser allows it.
+const androidDevice = /Android/i.test(navigator.userAgent || '') ||
+  /Android/i.test(navigator.userAgentData?.platform || '');
+const landscapeMedia = window.matchMedia('(orientation: landscape)');
+let playerRequested = false;
+let autoNativeFullscreen = false;
+let nativeFullscreenPending = false;
+
+function showVideoLoading(message='Chargement de la vidéo…'){
+  $('videoLoadingLabel').textContent = message;
+  $('videoLoading').hidden = false;
+}
+function hideVideoLoading(){
+  $('videoLoading').hidden = true;
+}
+function syncAndroidLandscape(tryNative=false){
+  const frame = $('videoFrame');
+  const shouldExpand = androidDevice && landscapeMedia.matches &&
+    playerRequested && appState.view === 'dashboard' && !$('appShell').hidden;
+  document.body.classList.toggle('android-landscape-video',shouldExpand);
+  if(!shouldExpand){
+    if(autoNativeFullscreen && document.fullscreenElement === frame){
+      document.exitFullscreen().catch(()=>{});
+    }
+    autoNativeFullscreen = false;
+    return;
+  }
+  if(!tryNative || document.fullscreenElement || nativeFullscreenPending ||
+     typeof frame.requestFullscreen !== 'function')return;
+  nativeFullscreenPending = true;
+  frame.requestFullscreen().then(()=>{
+    autoNativeFullscreen = true;
+    syncAndroidLandscape(false);
+  }).catch(()=>{
+    // Fallback CSS already fills the viewport, even without browser permission.
+  }).finally(()=>{nativeFullscreenPending=false;});
+}
+function deactivateLandscapePlayer(){
+  playerRequested = false;
+  document.body.classList.remove('android-landscape-video');
+  const frame = $('videoFrame');
+  if(document.fullscreenElement === frame){
+    document.exitFullscreen().catch(()=>{});
+  }
+  autoNativeFullscreen = false;
+}
+const onDeviceRotate = ()=>syncAndroidLandscape(true);
+if(landscapeMedia.addEventListener)landscapeMedia.addEventListener('change',onDeviceRotate);
+else if(landscapeMedia.addListener)landscapeMedia.addListener(onDeviceRotate);
+window.addEventListener('orientationchange',onDeviceRotate);
+window.addEventListener('resize',()=>syncAndroidLandscape(false));
+document.addEventListener('fullscreenchange',()=>{
+  if(document.fullscreenElement !== $('videoFrame'))autoNativeFullscreen=false;
+});
+$('fullscreenBtn').addEventListener('click',()=>{
+  const frame = $('videoFrame');
+  if(document.fullscreenElement === frame){
+    document.exitFullscreen().catch(()=>toast('Impossible de quitter le plein écran.',true));
+    autoNativeFullscreen=false;
+  }else if(typeof frame.requestFullscreen === 'function'){
+    frame.requestFullscreen().then(()=>{autoNativeFullscreen=false;})
+      .catch(()=>toast('Plein écran natif indisponible : utilisez le mode paysage.',true));
+  }else if(typeof $('video').webkitEnterFullscreen === 'function'){
+    $('video').webkitEnterFullscreen();
+  }else{
+    toast('Le plein écran natif n’est pas pris en charge par ce navigateur.',true);
+  }
+});
 function toast(message,bad=false){ const el=$('toast');el.textContent=message;el.classList.toggle('bad',bad);el.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove('show'),4300); }
 async function api(path,{method='GET',body=null}={}){
   const options={method,credentials:'same-origin',headers:{}};
@@ -61,6 +132,7 @@ function switchView(name){
  for(const el of document.querySelectorAll('.navitem'))el.classList.toggle('active',el.dataset.view===name);
  $('pageTitle').textContent=views[name][0];$('breadcrumb').textContent=views[name][0];$('pageSubtitle').textContent=views[name][1];
  $('sidebar').classList.remove('open');
+ syncAndroidLandscape(false);
  if(name==='favorites')renderFavorites();
  if(name==='history')loadHistory();
  if(name==='users')loadUsers();
@@ -70,7 +142,7 @@ document.addEventListener('click',event=>{
  const viewButton=event.target.closest('[data-view]');if(viewButton){switchView(viewButton.dataset.view);return;}
  const control=event.target.closest('[data-action]');if(!control)return;
  const action=control.dataset.action, id=control.dataset.id;
- if(action==='play-result'){ const entry=appState.results.find(r=>r.content_id===id);if(entry)play(entry.content_id,entry.name); }
+ if(action==='play-result'){ const entry=appState.results.find(r=>r.content_id===id);if(entry){switchView('dashboard');play(entry.content_id,entry.name);} }
  else if(action==='star-result'){const entry=appState.results.find(r=>r.content_id===id);const existing=appState.favorites.find(f=>f.content_id===id);if(existing)openFavorite(existing);else if(entry)openFavorite({content_id:entry.content_id,name:entry.name,group_name:entry.category||'Mes favoris'});}
  else if(action==='play-favorite'){const entry=appState.favorites.find(f=>String(f.id)===id);if(entry){switchView('dashboard');play(entry.content_id,entry.name);}}
  else if(action==='edit-favorite'){const entry=appState.favorites.find(f=>String(f.id)===id);if(entry)openFavorite(entry);}
@@ -97,7 +169,7 @@ async function monitor(showError=false){
   $('streamsCount').textContent=`${info.streams} / ${info.max_streams}`;
   $('sideSystem').textContent=(vpn.connected&&engine.online)?'Système opérationnel':'Système à vérifier';
   $('sideDot').className=`status-dot ${vpn.connected&&engine.online?'good':'bad'}`;
-  if(!vpn.connected&&appState.stream){resetVideo();appState.stream=null;playerStatus('VPN indisponible : lecture arrêtée.',true);}
+  if(!vpn.connected&&appState.stream){deactivateLandscapePlayer();resetVideo();appState.stream=null;playerStatus('VPN indisponible : lecture arrêtée.',true);}
  }catch(err){
   $('vpnText').textContent='Surveillance indisponible';$('vpnPill').textContent='Inconnu';$('vpnPill').className='pill unknown';
   $('vpnDot').className='status-dot bad';$('topVpn').textContent='Statut inconnu';
@@ -178,40 +250,81 @@ async function signOut(){try{
  $('usersList').replaceChildren();$('historyList').replaceChildren();$('searchResults').replaceChildren();$('searchResults2').replaceChildren();$('favoritesList').replaceChildren();$('favoritesFullList').replaceChildren();await bootstrap();
  }catch(err){toast(err.message,true);}}
 $('logoutButton').addEventListener('click',signOut);
-function resetVideo(){const video=$('video');if(appState.hls){appState.hls.destroy();appState.hls=null;}video.pause();video.removeAttribute('src');video.load();$('videoPlaceholder').hidden=false;}
-function playerStatus(text,error=false){$('playerMessage').textContent=text;$('playerMessage').classList.toggle('error',error);$('streamState').textContent=error?'Erreur':appState.stream?'Lecture':'Prêt';$('playerPill').textContent=error?'Erreur':appState.stream?'Actif':'En attente';$('streamPill').textContent=appState.stream?'En cours':'En attente';}
+function resetVideo(){const video=$('video');hideVideoLoading();if(appState.hls){appState.hls.destroy();appState.hls=null;}video.pause();video.removeAttribute('src');video.load();$('videoPlaceholder').hidden=false;}
+function playerStatus(text,error=false){if(error)hideVideoLoading();$('playerMessage').textContent=text;$('playerMessage').classList.toggle('error',error);$('streamState').textContent=error?'Erreur':appState.stream?'Lecture':'Prêt';$('playerPill').textContent=error?'Erreur':appState.stream?'Actif':'En attente';$('streamPill').textContent=appState.stream?'En cours':'En attente';}
 function attachHLS(url){
  const video=$('video');$('videoPlaceholder').hidden=true;
+ showVideoLoading('Mise en mémoire tampon…');
  if(window.Hls&&Hls.isSupported()){
    const hls=new Hls({liveSyncDurationCount:3,maxBufferLength:35});appState.hls=hls;
-   hls.on(Hls.Events.MANIFEST_PARSED,()=>{playerStatus('Flux prêt. Cliquez sur lecture si nécessaire.');video.play().catch(()=>{});});
+   hls.on(Hls.Events.MANIFEST_PARSED,()=>{
+     playerStatus('Flux prêt. Lecture en préparation…');
+     video.play().catch(()=>{
+       hideVideoLoading();
+       playerStatus('Flux prêt. Touchez ▶ dans le lecteur pour démarrer.');
+     });
+   });
    hls.on(Hls.Events.ERROR,(_event,data)=>{
      if(!data.fatal)return;
-     if(data.type===Hls.ErrorTypes.NETWORK_ERROR)hls.startLoad();
-     else if(data.type===Hls.ErrorTypes.MEDIA_ERROR)hls.recoverMediaError();
-     else playerStatus('Erreur du lecteur HLS : '+data.details,true);
+     if(data.type===Hls.ErrorTypes.NETWORK_ERROR){
+       showVideoLoading('Reconnexion au flux…');hls.startLoad();
+     }else if(data.type===Hls.ErrorTypes.MEDIA_ERROR){
+       showVideoLoading('Récupération de la vidéo…');hls.recoverMediaError();
+     }else playerStatus('Erreur du lecteur HLS : '+data.details,true);
    });hls.loadSource(url);hls.attachMedia(video);
  }else if(video.canPlayType('application/vnd.apple.mpegurl')){
-   video.src=url;video.play().catch(()=>{});
+   video.src=url;
+   video.play().catch(()=>{
+     hideVideoLoading();
+     playerStatus('Flux prêt. Touchez ▶ dans le lecteur pour démarrer.');
+   });
  }else{playerStatus('Lecture HLS indisponible : vérifier le chargement de hls.js.',true);}
 }
+$('video').addEventListener('playing',()=>{
+ hideVideoLoading();
+ playerStatus('Lecture en cours.');
+});
+$('video').addEventListener('waiting',()=>{
+ if(playerRequested)showVideoLoading('Mise en mémoire tampon…');
+});
+$('video').addEventListener('stalled',()=>{
+ if(playerRequested)showVideoLoading('Connexion au flux…');
+});
+$('video').addEventListener('pause',()=>{
+ if(!appState.busy)hideVideoLoading();
+});
+$('video').addEventListener('error',()=>{
+ if(playerRequested)playerStatus('Le lecteur a rencontré une erreur vidéo.',true);
+});
 async function play(contentId,name='Flux manuel'){
- if(appState.busy)return;setBusy(true);playerStatus('Préparation du flux (jusqu’à 30 secondes)…');
+ if(appState.busy)return;
+ setBusy(true);
+ playerRequested=true;
+ syncAndroidLandscape(true);
+ resetVideo();
+ showVideoLoading('Connexion au moteur AceStream…');
+ playerStatus('Préparation du flux (jusqu’à 30 secondes)…');
  try{
   if(appState.stream)await api(`/api/streams/${appState.stream.stream_id}`,{method:'DELETE'});
-  appState.stream=null;resetVideo();
+  appState.stream=null;
   const data=await api('/api/streams/start',{method:'POST',body:{content_id:contentId,name}});
   appState.stream={stream_id:data.stream_id,playlist:data.playlist,name};
   $('streamTitle').textContent=name;playerStatus('Flux initialisé, lecture en préparation…');attachHLS(data.playlist);
   monitor();
- }catch(err){appState.stream=null;resetVideo();playerStatus(err.message,true);toast(err.message,true);}finally{setBusy(false);}
+ }catch(err){
+  appState.stream=null;
+  deactivateLandscapePlayer();
+  resetVideo();
+  playerStatus(err.message,true);
+  toast(err.message,true);
+ }finally{setBusy(false);}
 }
-async function stopStream(){if(!appState.stream)return;try{await api(`/api/streams/${appState.stream.stream_id}`,{method:'DELETE'});}catch(err){toast(err.message,true);}appState.stream=null;resetVideo();$('streamTitle').textContent='Aucune lecture en cours';playerStatus('Lecture arrêtée.');}
+async function stopStream(){if(appState.stream){try{await api(`/api/streams/${appState.stream.stream_id}`,{method:'DELETE'});}catch(err){toast(err.message,true);}}appState.stream=null;deactivateLandscapePlayer();resetVideo();$('streamTitle').textContent='Aucune lecture en cours';playerStatus('Lecture arrêtée.');}
 $('manualPlay').addEventListener('click',()=>play($('manualInput').value,'Flux manuel'));
 $('manualInput').addEventListener('keydown',event=>{if(event.key==='Enter')play($('manualInput').value,'Flux manuel');});
 $('stopBtn').addEventListener('click',stopStream);
 async function loadStreams(){try{const streams=(await api('/api/streams')).streams;
- if(streams.length){const own=streams.find(s=>s.owner===appState.user.id)||streams[0];appState.stream={stream_id:own.stream_id,playlist:own.playlist,name:own.name};$('streamTitle').textContent=own.name;attachHLS(own.playlist);playerStatus('Lecture existante retrouvée.');}
+ if(streams.length){const own=streams.find(s=>s.owner===appState.user.id)||streams[0];appState.stream={stream_id:own.stream_id,playlist:own.playlist,name:own.name};playerRequested=true;syncAndroidLandscape(false);$('streamTitle').textContent=own.name;attachHLS(own.playlist);playerStatus('Lecture existante retrouvée.');}
  }catch(err){console.warn(err);}}
 window.addEventListener('keydown',event=>{if(event.key==='Escape'){$('modalLayer').hidden=true;$('userLayer').hidden=true;}});
 setInterval(()=>{if(appState.user&&document.visibilityState==='visible')monitor();},15000);
