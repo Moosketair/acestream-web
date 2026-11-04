@@ -70,6 +70,36 @@ class DashboardTests(unittest.TestCase):
         self.assertEqual(self.client.get('/api/favorites').get_json()['favorites'][0]['name'],'Mon nom')
         self.assertEqual(self.post('/api/favorites/'+str(fav),method='DELETE').status_code,200)
 
+    def test_favorite_keeps_explicit_infohash_link(self):
+        self.setup_admin()
+        uri = "acestream://?infohash=" + HASH
+        added = self.post('/api/favorites', {
+            'name':'Index engine', 'content_id':uri, 'group_name':'Test', 'notes':''})
+        self.assertEqual(added.status_code, 201, added.get_data(as_text=True))
+        values = self.client.get('/api/favorites').get_json()['favorites']
+        self.assertEqual(values[0]['content_id'], uri)
+
+    def test_stream_start_uses_content_id_or_explicit_infohash(self):
+        self.setup_admin()
+        class VPNReply:
+            def raise_for_status(self): pass
+            def json(self): return {"status":"running"}
+        manager = self.app.extensions['stream_manager']
+        with (patch('app.requests.get', return_value=VPNReply()),
+              patch.object(manager, 'start', return_value='abcdef0123456789') as start):
+            site_result = self.post('/api/streams/start', {
+                'content_id':HASH, 'name':'Rennes - Olympiacos'})
+            self.assertEqual(site_result.status_code, 201,
+                             site_result.get_data(as_text=True))
+            self.assertEqual(start.call_args.args[1:3], ('id', HASH))
+            engine_result = self.post('/api/streams/start', {
+                'content_id':'acestream://?infohash='+HASH, 'name':'Moteur'})
+            self.assertEqual(engine_result.status_code, 201,
+                             engine_result.get_data(as_text=True))
+            self.assertEqual(start.call_args.args[1:3], ('infohash', HASH))
+        history = self.client.get('/api/history').get_json()['history']
+        self.assertEqual(history[0]['content_id'], 'acestream://?infohash='+HASH)
+
     def test_vpn_fail_closed_without_ffmpeg(self):
         self.setup_admin()
         with patch('app.requests.get',side_effect=Exception('should-be-requests-exception')):
