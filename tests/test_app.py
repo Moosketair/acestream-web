@@ -306,7 +306,9 @@ class DashboardTests(unittest.TestCase):
                 response = self.client.get(url)
                 self.assertEqual(response.status_code, 200, url)
                 data = response.get_data()
-                self.assertTrue(data.startswith(b'\\x89PNG\\r\\n\\x1a\\n') or
-                                (url.endswith('.ico') and data[:4] == b'\\x00\\x00\\x01\\x00'))
+                self.assertTrue(
+                    data.startswith(bytes((137, 80, 78, 71, 13, 10, 26, 10))) or
+                    (url.endswith('.ico') and data[:4] == bytes((0, 0, 1, 0)))
+                )
 
 if __name__ == '__main__':unittest.main()
