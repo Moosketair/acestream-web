@@ -1,5 +1,6 @@
 """Tests for the direct search-ace.stream Web catalogue JSON endpoint."""
 import unittest
+import json
 from unittest.mock import patch
 
 import requests
@@ -47,8 +48,10 @@ class SiteSearchTests(unittest.TestCase):
         self.assertFalse(fake.call_args.kwargs["allow_redirects"])
 
     def test_invalid_items_and_control_characters_are_removed(self):
-        payload = (f'[null, 23, {{"content_id":"{HASH_1.upper()}",'
-                   '"name":"\u202eRennes\u0000 live"}}]').encode()
+        payload = json.dumps([None, 23, {
+            "content_id": HASH_1.upper(),
+            "name": "\\u202eRennes\\u0000 live"
+        }]).encode()
         with patch("search_sources.requests.get", return_value=Response(payload)):
             results, _total, _warning = SiteSearch().search("  ren\u202enes  ")
         self.assertEqual(results[0]["content_id"], HASH_1)
