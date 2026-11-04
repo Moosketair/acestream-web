@@ -1,4 +1,4 @@
-# AceStream Web 0.2.2 — Tableau de bord Docker
+# AceStream Web 0.3.0 — Tableau de bord Docker
 
 Interface Web **auto-hébergée** pour consulter et lire des flux Ace Stream autorisés, avec interface responsive, comptes utilisateurs, favoris privés, recherche et monitoring Gluetun/Proton VPN.
 
@@ -55,14 +55,21 @@ Les requêtes sortantes faites **par l'interface Web** (par exemple le télécha
 - **Lecteur amélioré** : animation de chargement dès le clic sur « Lire », pendant l'initialisation Ace Stream et pendant la mise en mémoire tampon. L'animation disparaît lorsque la lecture démarre, et les erreurs sont affichées plutôt que de laisser un chargement infini.
 - **Android paysage** : pendant une lecture active, la vidéo occupe automatiquement toute la fenêtre lors du passage en paysage et revient à sa taille normale en portrait. Le navigateur peut interdire le **plein écran système natif** sans interaction utilisateur : l'application tente le mode natif quand c'est autorisé, et utilise autrement un affichage plein écran dans la page ; le bouton ⛶ permet de demander explicitement le mode natif. La rotation automatique du téléphone doit être activée.
 - **Icône Web** : favicon SVG violet/bleu et manifeste de raccourci pour Android. Le nouveau favicon peut nécessiter un rechargement forcé ou la suppression du cache du navigateur.
+- **Picture-in-Picture (PiP)** : bouton mini-lecteur ajouté au-dessus de la vidéo. Le lecteur s'enregistre également auprès de Media Session (`enterpictureinpicture`) afin que les navigateurs compatibles puissent déclencher automatiquement le PiP lorsqu'on change d'onglet ou d'application. Une tentative est aussi effectuée au passage en arrière-plan sur Android, sans interrompre la lecture en cas de refus du navigateur. **Ce fonctionnement automatique n'est pas garanti**, car l'autorisation PiP et l'activation utilisateur dépendent du navigateur ; l'accès HTTPS est recommandé, et l'accès HTTP sur IP locale peut empêcher l'API Web PiP de fonctionner.
 - **Mots de passe** : minimum de **10 caractères** pour l'initialisation, les nouveaux utilisateurs et les changements de mot de passe ; les mots de passe existants restent valables à la connexion.
 - Connexion, première initialisation sécurisée, changement de mot de passe, rôles `admin` / `user` et administration des comptes.
 - Favoris **propres à chaque compte** : nom, hash, groupe et notes ; création, édition, suppression.
 - Historique de lecture par compte.
-- **Recherche de chaînes** dans la playlist publique documentée de [search-ace.stream](https://search-ace.stream/doc), mise en cache **20 minutes**. Cette source externe peut être indisponible, bloquée ou changer de format ; aucune garantie de disponibilité des flux affichés. La recherche est limitée à la playlist, pas nécessairement à tous les résultats de la page Web. Le téléchargement de cette playlist par AceStream Web **ne passe pas par Proton VPN**.
+- **Recherche multi-sources** : choix `Toutes les sources`, `API Ace Stream` (moteur P2P derrière Gluetun) ou `search-ace.stream` (playlist publique mise en cache **20 minutes**). L'API est interrogée côté serveur, avec prise en charge du nouveau `/search` et de l'ancien `/server/api` lorsqu'ils sont proposés par la version du moteur ; le jeton de l'ancien endpoint n'est jamais transmis au navigateur. Les résultats sont dédoublonnés par identifiant et peuvent inclure le statut de disponibilité estimé par le moteur. Une source indisponible n'empêche pas l'autre de répondre. Le téléchargement de la playlist par AceStream Web **ne passe pas par Proton VPN**. Les résultats ne garantissent pas qu'un flux fonctionne, et la recherche playlist ne couvre pas forcément tous les résultats du site Web.
 - Monitoring à partir des API Gluetun (`/v1/vpn/status`, `/v1/publicip/ip`) et Ace Stream (`get_version`). Les valeurs non disponibles sont affichées comme telles — aucun débit ou pays fictif.
 - Lecture HLS via FFmpeg ; autorisations sur chaque playlist et chaque segment.
 - Hash brut, URI `acestream://` et liens `infohash`, `id`, `content_id`.
+
+### PiP Android : prérequis et limites
+
+- Le PiP automatique lorsque l'onglet devient masqué repose sur le navigateur : en général, l'API Web PiP exige un geste utilisateur, et l'API Media Session n'autorise l'ouverture automatique que dans certaines conditions. Sur certains navigateurs Android, il faudra utiliser le **bouton PiP** avant de quitter l'application, ou passer par les contrôles vidéo natifs.
+- Autorisez l'application du navigateur à utiliser Picture-in-Picture dans les paramètres Android. Pour obtenir le meilleur support de l'API Web PiP, utilisez l'interface via **HTTPS** ; `http://IP_DU_SERVEUR:8088` peut ne pas être éligible aux API sécurisées.
+- Le bouton PiP ne démarre pas de vidéo : une lecture doit déjà être en cours. Le mode paysage plein écran reste indépendant du PiP.
 
 ### Limites connues
 
