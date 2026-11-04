@@ -185,3 +185,85 @@ class EngineSearch:
                 return (*self._legacy_search(text, limit), None)
             except (requests.RequestException, ValueError, TypeError, KeyError) as exc:
                 raise RuntimeError("Recherche API Ace Stream non disponible sur ce moteur.") from exc
+
+
+# This upstream has its OWN searchable catalogue. It is not the Ace Stream
+# Engine P2P search index, nor the public M3U playlist. The endpoint returns
+# a JSON list of {content_id, name, translated_name} entries.
+SITE_SEARCH_URL = "https://search-ace.stream/search"
+SITE_SEARCH_BYTES = 256 * 1024
+SITE_SEARCH_RESULTS = 60
+CONTROL_CHARS = re.compile(
+    "[\\x00-\\x1f\\x7f-\\x9f\\u200b-\\u200f\\u2028-\\u202e\\u2060\\u2066-\\u2069\\ufeff]"
+)
+
+
+class SiteSearch:
+    """Query the same search index as search-ace.stream, server-side.
+
+    URL and redirect policy are fixed to avoid exposing an arbitrary proxy.
+    Results are validated and minimized before being returned to clients.
+    """
+
+    def __init__(self, url=SITE_SEARCH_URL):
+        self.url = url
+
+    @staticmethod
+    def _clean(text, limit=180):
+        return CONTROL_CHARS.sub("", text).strip()[:limit] if isinstance(text, str) else ""
+
+    @classmethod
+    def _parse(cls, payload, limit=SITE_SEARCH_RESULTS):
+        if not isinstance(payload, list):
+            raise ValueError("Réponse JSON de recherche invalide.")
+        entries, seen = [], set()
+        for item in payload[:1000]:
+            if not isinstance(item, dict):
+                continue
+            content_id = item.get("content_id")
+            if not isinstance(content_id, str) or not HASH.fullmatch(content_id):
+                continue
+            content_id = content_id.lower()
+            if content_id in seen:
+                continue
+            name = cls._clean(item.get("name"))
+            translated = cls._clean(item.get("translated_name"))
+            if not name and not translated:
+                continue
+            seen.add(content_id)
+            entry = {"name": name or translated, "content_id": content_id,
+                     "source": "Site search-ace.stream", "category": "Diffusion"}
+            if translated and translated != name:
+                entry["translated_name"] = translated
+            entries.append(entry)
+            if len(entries) >= limit:
+                break
+        return entries, len(entries), None
+
+    def search(self, query, limit=SITE_SEARCH_RESULTS):
+        query = self._clean(query, 100)
+        if len(query) < 2:
+            return [], 0, None
+        limit = min(max(int(limit), 1), SITE_SEARCH_RESULTS)
+        try:
+            with requests.get(
+                self.url,
+                params={"query": query},
+                headers={"Accept": "application/json", "Accept-Encoding": "identity",
+                         "User-Agent": "AceStreamWeb/0.3"},
+                timeout=(4, 10), stream=True, allow_redirects=False,
+            ) as response:
+                # Block redirects to unexpected hosts, including on the same domain.
+                if not 200 <= response.status_code < 300:
+                    raise ValueError("Service de recherche HTTP " + str(response.status_code))
+                chunks, total = [], 0
+                for chunk in response.iter_content(chunk_size=16384):
+                    total += len(chunk)
+                    if total > SITE_SEARCH_BYTES:
+                        raise ValueError("Réponse de recherche trop volumineuse")
+                    chunks.append(chunk)
+                import json
+                payload = json.loads(b"".join(chunks).decode("utf-8"))
+            return self._parse(payload, limit)
+        except (requests.RequestException, ValueError, UnicodeDecodeError) as exc:
+            raise RuntimeError("La recherche directe sur search-ace.stream est indisponible.") from exc
