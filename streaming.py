@@ -1,4 +1,5 @@
 """Single-process FFmpeg manager. Gunicorn must run with one worker."""
+import logging
 import re
 import shutil
 import subprocess
@@ -16,11 +17,12 @@ def parse_content(value):
         return None, None
     value = value.strip()
     if HASH.fullmatch(value):
-        return "infohash", value.lower()
+        # A bare AceStream hash is a Content ID (as on search-ace.stream).
+        return "id", value.lower()
     if value.lower().startswith("acestream://"):
         possible = value[12:]
         if HASH.fullmatch(possible):
-            return "infohash", possible.lower()
+            return "id", possible.lower()
     try:
         parsed = urlsplit(value)
         if parsed.scheme in ("http", "https", "acestream"):
@@ -84,6 +86,32 @@ class StreamManager:
             item = self.streams.get(sid)
             return item if item and (admin or item["owner"] == user_id) else None
 
+    @staticmethod
+    def _ffmpeg_failure_message(logfile, returncode):
+        """Explain common playback failures without exposing stream URLs in responses."""
+        try:
+            tail = logfile.read_text(encoding="utf-8", errors="replace")[-4096:]
+        except OSError:
+            tail = ""
+        # FFmpeg logs sometimes echo the internal URL including a Content ID.
+        sanitized = re.sub(r"(?i)([?&](?:id|infohash|content_id)=)[0-9a-f]{40}",
+                           r"\\1[REDACTED]", tail)
+        diagnostic = " | ".join(line.strip() for line in sanitized.splitlines()[-8:])
+        logging.warning("AceStream FFmpeg exited (code=%s). Last output: %s",
+                        returncode, diagnostic[:1300] or "(aucun message)")
+        lower = tail.lower()
+        if "401 unauthorized" in lower or "403 forbidden" in lower:
+            return "Le moteur Ace Stream refuse ce flux (accès interdit)."
+        if "404 not found" in lower or "http error 404" in lower:
+            return "Le moteur Ace Stream ne trouve pas ce flux (HTTP 404)."
+        if "500 internal server error" in lower or "http error 500" in lower:
+            return "Le moteur Ace Stream n'a pas réussi à démarrer ce flux (HTTP 500)."
+        if "connection refused" in lower or "connection timed out" in lower:
+            return "FFmpeg n'arrive pas à joindre le moteur Ace Stream."
+        if "invalid data found when processing input" in lower:
+            return "Le moteur n'a pas fourni de vidéo exploitable à FFmpeg."
+        return "FFmpeg s'est arrêté (code {}). Consulte les journaux d'AceStream Web dans Dockge.".format(returncode)
+
     def start(self, user_id, parameter, content_id, name):
         with self.lock:
             for sid, item in list(self.streams.items()):
@@ -117,8 +145,11 @@ class StreamManager:
             if playlist.exists() and playlist.stat().st_size > 0:
                 return sid
             if proc.poll() is not None:
+                message = self._ffmpeg_failure_message(folder / "ffmpeg.log", proc.returncode)
                 self.stop(sid)
-                raise RuntimeError("FFmpeg s'est arrêté avant de créer le flux. Le lien peut être indisponible.")
+                raise RuntimeError(message)
             time.sleep(.25)
+        # Log the available FFmpeg output before deleting its temporary files.
+        self._ffmpeg_failure_message(folder / "ffmpeg.log", proc.poll())
         self.stop(sid)
-        raise TimeoutError("Le flux n'a pas démarré après 30 secondes.")
+        raise TimeoutError("Le flux n'a pas démarré après 30 secondes. Consulte les logs AceStream Web dans Dockge.")
