@@ -1,0 +1,47 @@
+name: acestream-web
+services:
+  gluetun:
+    image: qmcgaw/gluetun:latest
+    container_name: acestream-vpn
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    environment:
+      VPN_SERVICE_PROVIDER: protonvpn
+      VPN_TYPE: wireguard
+      WIREGUARD_PRIVATE_KEY: ${WIREGUARD_PRIVATE_KEY:?Set WIREGUARD_PRIVATE_KEY in .env}
+      DNS_SERVER: "on"
+      DNS_UPSTREAM_RESOLVER_TYPE: dot
+      DNS_UPSTREAM_RESOLVERS: cloudflare
+    networks:
+      - acestream-net
+  acestream:
+    image: jopsis/aceserve:v3.2.17
+    container_name: acestream
+    restart: unless-stopped
+    network_mode: "service:gluetun"
+    volumes:
+      - ${ACESTREAM_DNS_FILE:-./config/resolv.conf}:/etc/resolv.conf:ro
+    depends_on:
+      gluetun:
+        condition: service_healthy
+  acestream-web:
+    image: ghcr.io/moosketair/acestream-web:latest
+    container_name: acestream-web
+    restart: unless-stopped
+    ports:
+      - "${WEB_BIND_IP:-0.0.0.0}:${WEB_PORT:-8087}:8080"
+    environment:
+      ACESTREAM_URL: http://gluetun:6878
+    networks:
+      - acestream-net
+    depends_on:
+      gluetun:
+        condition: service_healthy
+      acestream:
+        condition: service_started
+networks:
+  acestream-net:
+    driver: bridge
