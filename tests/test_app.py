@@ -147,4 +147,35 @@ class DashboardTests(unittest.TestCase):
         self.assertIn('minlength="10"', html)
         self.assertNotIn('minlength="12"', html)
 
+    def test_player_spinner_android_landscape_and_site_icon(self):
+        response = self.client.get('/')
+        self.assertEqual(response.status_code, 200)
+        html = response.get_data(as_text=True)
+        self.assertIn('id="videoFrame"', html)
+        self.assertIn('id="videoLoading"', html)
+        self.assertIn('id="videoLoadingLabel"', html)
+        self.assertIn('id="fullscreenBtn"', html)
+        self.assertIn('href="/static/favicon.svg"', html)
+        self.assertIn('href="/static/site.webmanifest"', html)
+
+        js = self.client.get('/static/app.js').get_data(as_text=True)
+        self.assertIn("addEventListener('playing'", js)
+        self.assertIn("addEventListener('waiting'", js)
+        self.assertIn('function syncAndroidLandscape(', js)
+        self.assertIn("requestFullscreen()", js)
+        self.assertIn('android-landscape-video', js)
+
+        css = self.client.get('/static/app.css').get_data(as_text=True)
+        self.assertIn('.video-loading-spinner', css)
+        self.assertIn('body.android-landscape-video .video-frame', css)
+
+        from xml.etree import ElementTree
+        icon = self.client.get('/static/favicon.svg')
+        self.assertEqual(icon.status_code, 200)
+        root = ElementTree.fromstring(icon.get_data(as_text=True))
+        self.assertTrue(root.tag.endswith('svg'))
+        manifest = self.client.get('/static/site.webmanifest')
+        self.assertEqual(manifest.status_code, 200)
+        self.assertEqual(manifest.get_json()['short_name'], 'AceStream')
+
 if __name__ == '__main__':unittest.main()
