@@ -1,4 +1,4 @@
-# AceStream TV pour Android — version 1.4.0
+# AceStream TV pour Android — version 1.4.1
 
 Application **Android native** (Kotlin, vues Android AppCompat + Media3), privée et sans Play Store. L'interface reprend l'identité graphique d'AceStream Web : fond marine sombre, cartes arrondies, contours subtils, boutons violets dégradés et navigation fixe à quatre onglets et raccourci Paramètres en haut à droite.
 
@@ -43,3 +43,9 @@ L'application requiert Android 8 ou plus récent, l'accès réseau à ton serveu
 - **Interface simplifiée** : supprimer « Diffuser sur Chromecast » sous le lecteur (le bouton Cast de l'en-tête reste opérationnel), et supprimer l'onglet Paramètres de la barre inférieure (accès conservé par l'icône ⚙ en haut). Barre inférieure à **Accueil, Recherche, Favoris, Historique**.
 - Aucun changement sur le serveur, la recherche et les favoris. Version installable via le workflow GitHub Actions.
 
+
+## Correctifs Android 1.4.1
+
+- **Centrage du triangle Play** : retrait du décalage horizontal de 3 dp appliqué à l'ImageView et recentrage de la boîte englobante de la forme vectorielle (`x = 5,7` à `18,3` sur un viewport de 24). Le cercle de 58 dp reste inchangé.
+- **Empreinte automatiquement à l'ouverture** : quand les identifiants biométriques sont déjà enregistrés pour l'adresse du serveur, Android affiche immédiatement le dialogue biométrique après l'ouverture de l'écran Connexion et le passage de l'activité à l'état Resumed. Aucun bouton supplémentaire à toucher. Si la personne annule, le formulaire classique reste utilisable, sans relance automatique en boucle. Un changement d'onglet, la sortie du PiP ou le retour des paramètres ne redéclenchent pas la demande. Le bouton manuel reste disponible.
+- Aucune modification du serveur ou de Docker Compose. Les identifiants restent chiffrés avec le Keystore Android et nécessitent toujours une reconnaissance biométrique forte. Le dialogue automatique ne survient qu'au démarrage de l'activité sur l'écran Connexion (pas à chaque simple retour depuis l'écran d'accueil si la session est déjà active).

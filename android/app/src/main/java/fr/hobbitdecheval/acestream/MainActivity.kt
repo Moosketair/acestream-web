@@ -94,6 +94,10 @@ class MainActivity : AppCompatActivity() {
     private var playbackStarting = false
     private var playbackGeneration = 0
     private val biometricLogin by lazy { BiometricLogin(this) }
+    // Only the first login screen shown on a fresh app launch prompts
+    // automatically. Opening settings or returning from PiP never re-prompts.
+    private var pendingStartupFingerprint = false
+    private var startupFingerprintStarted = false
     private val orientationListener by lazy {
         object : OrientationEventListener(this, SensorManager.SENSOR_DELAY_NORMAL) {
             override fun onOrientationChanged(degrees: Int) {
@@ -175,7 +179,38 @@ class MainActivity : AppCompatActivity() {
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) = updatePlaybackState()
         })
         initializeCast()
+        pendingStartupFingerprint = biometricLogin.available() &&
+            biometricLogin.savedUser(server) != null
         showLogin()
+    }
+
+    override fun onPostResume() {
+        super.onPostResume()
+        // A BiometricPrompt requires a resumed FragmentActivity. Triggering
+        // here (rather than inside onCreate) also avoids fragment-state errors.
+        if (pendingStartupFingerprint && !startupFingerprintStarted &&
+            currentScreen == "Connexion" && user.isBlank()) {
+            pendingStartupFingerprint = false
+            startupFingerprintStarted = true
+            window.decorView.post {
+                if (!isFinishing && !isDestroyed &&
+                    currentScreen == "Connexion" && user.isBlank()) {
+                    startFingerprintLogin()
+                }
+            }
+        }
+    }
+
+    private fun startFingerprintLogin() {
+        if (!biometricLogin.available() || biometricLogin.savedUser(server) == null) {
+            showMessage("Aucune empreinte enregistrée pour ce serveur.")
+            return
+        }
+        biometricLogin.authenticate(
+            server,
+            { savedLogin, password -> signIn(savedLogin, password) },
+            { error -> showMessage(error) }
+        )
     }
 
     private fun initializeCast() {
@@ -820,13 +855,8 @@ class MainActivity : AppCompatActivity() {
                 }
                 getSharedPreferences("acestream", MODE_PRIVATE)
                     .edit().putString("server", server).apply()
-                biometricLogin.authenticate(server,
-                    { savedLogin, decryptedPassword ->
-                        login.setText(savedLogin)
-                        password.setText("")
-                        signIn(savedLogin, decryptedPassword)
-                    },
-                    { error -> showMessage(error) })
+                password.setText("")
+                startFingerprintLogin()
             }, 0)
         }
         addBox(loginCard, 19)
@@ -908,11 +938,11 @@ class MainActivity : AppCompatActivity() {
             contentDescription = "Lecture"
             scaleType = ImageView.ScaleType.FIT_CENTER
         }
-        circularPlay.addView(playSymbol, FrameLayout.LayoutParams(d(26), d(26),
-            Gravity.CENTER).apply {
-            // Triangle has more visual mass to its left: optical correction.
-            leftMargin = d(3)
-        })
+        // Center the image bounds geometrically. The previous +3dp left
+        // margin shifted the triangle to the right inside the circle.
+        circularPlay.addView(playSymbol, FrameLayout.LayoutParams(
+            d(26), d(26), Gravity.CENTER
+        ))
         placeholder.addView(circularPlay, LinearLayout.LayoutParams(d(58), d(58)).apply {
             gravity = Gravity.CENTER_HORIZONTAL
             bottomMargin = d(12)
