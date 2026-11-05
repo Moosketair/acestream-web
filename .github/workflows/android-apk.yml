@@ -25,10 +25,8 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - name: Check preinstalled Android SDK
-        run: |
-          echo "ANDROID_HOME=${ANDROID_HOME:-$ANDROID_SDK_ROOT}" >> "$GITHUB_ENV"
-          sdkmanager --version
+      - name: Android SDK
+        uses: android-actions/setup-android@v4
       - name: Android platform
         run: |
           yes | sdkmanager --licenses > /dev/null || true
