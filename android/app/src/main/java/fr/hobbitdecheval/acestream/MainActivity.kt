@@ -6,6 +6,16 @@ import android.view.View
 import android.widget.ImageView
 import android.graphics.Typeface
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.widget.SwitchCompat
+import androidx.activity.OnBackPressedCallback
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
+import android.view.WindowManager
+import android.view.OrientationEventListener
+import android.hardware.SensorManager
+import android.graphics.Rect
 import androidx.mediarouter.app.MediaRouteButton
 import com.google.android.gms.cast.MediaInfo
 import com.google.android.gms.cast.MediaMetadata
@@ -70,6 +80,40 @@ class MainActivity : AppCompatActivity() {
     private var currentScreen = "Connexion"
     private var playerView: PlayerView? = null
     private var searchGeneration = 0
+    private var searchScrollY = 0
+    private var screenScrollView: ScrollView? = null
+    private var screenBeforePip = "Tableau de bord"
+    private var autoPipEnabled = true
+    private var fullscreen = false
+    private var fullscreenRequestedByUser = false
+    private var suppressLandscapeFullscreen = false
+    private var screenBeforeFullscreen = "Tableau de bord"
+    private var placeholderView: android.view.View? = null
+    private var playbackBadge: TextView? = null
+    private val orientationListener by lazy {
+        object : OrientationEventListener(this, SensorManager.SENSOR_DELAY_NORMAL) {
+            override fun onOrientationChanged(degrees: Int) {
+                if (degrees == ORIENTATION_UNKNOWN || isInPictureInPictureMode ||
+                    fullscreenRequestedByUser) return
+                val isLandscape = degrees in 60..120 || degrees in 240..300
+                val isPortrait = degrees in 0..30 || degrees in 330..359 ||
+                    degrees in 150..210
+                if (isPortrait) {
+                    suppressLandscapeFullscreen = false
+                    // Return to portrait even when the phone's global auto
+                    // rotation switch is disabled.
+                    if (requestedOrientation == ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE) {
+                        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+                    }
+                } else if (isLandscape &&
+                    (activeStream.isNotBlank() || player.currentMediaItem != null) &&
+                    !fullscreen && !suppressLandscapeFullscreen &&
+                    requestedOrientation != ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE) {
+                    requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                }
+            }
+        }
+    }
     private lateinit var client: OkHttpClient
     private lateinit var player: ExoPlayer
     private lateinit var root: LinearLayout
@@ -78,7 +122,26 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        server = getSharedPreferences("acestream", MODE_PRIVATE).getString("server", server) ?: server
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        val settings = getSharedPreferences("acestream", MODE_PRIVATE)
+        server = settings.getString("server", server) ?: server
+        autoPipEnabled = settings.getBoolean("auto_pip", true)
+        restoreSearchCache()
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                when {
+                    fullscreen -> exitFullscreen()
+                    isInPictureInPictureMode -> Unit
+                    currentScreen != "Tableau de bord" && currentScreen != "Connexion" ->
+                        showPlayer()
+                    autoPipEnabled && shouldOfferPip() -> enterPip()
+                    else -> {
+                        isEnabled = false
+                        onBackPressedDispatcher.onBackPressed()
+                    }
+                }
+            }
+        })
         client = OkHttpClient.Builder().cookieJar(object : CookieJar {
             override fun saveFromResponse(url: HttpUrl, fresh: List<Cookie>) {
                 synchronized(cookies) {
@@ -96,8 +159,15 @@ class MainActivity : AppCompatActivity() {
             .build()
         player.addListener(object : Player.Listener {
             override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
-                runOnUiThread { showMessage("Lecture impossible : " + error.message.orEmpty()) }
+                runOnUiThread {
+                    showMessage("Lecture impossible : " + error.message.orEmpty())
+                    updatePlaybackState()
+                }
             }
+            override fun onIsPlayingChanged(isPlaying: Boolean) = updatePlaybackState()
+            override fun onPlaybackStateChanged(playbackState: Int) = updatePlaybackState()
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) = updatePlaybackState()
+            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) = updatePlaybackState()
         })
         initializeCast()
         showLogin()
@@ -225,6 +295,98 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun showSystemBars() {
+        val controller = WindowInsetsControllerCompat(window, window.decorView)
+        controller.show(WindowInsetsCompat.Type.systemBars())
+    }
+
+    private fun hideSystemBars() {
+        val controller = WindowInsetsControllerCompat(window, window.decorView)
+        controller.systemBarsBehavior =
+            WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        controller.hide(WindowInsetsCompat.Type.systemBars())
+    }
+
+    private fun shouldOfferPip(): Boolean =
+        activeStream.isNotBlank() &&
+        player.currentMediaItem != null &&
+        player.playWhenReady &&
+        player.playbackState != Player.STATE_ENDED
+
+    private fun updatePlaybackState() {
+        if (!::player.isInitialized) return
+        val keepsAwake = shouldOfferPip()
+        if (keepsAwake) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            try {
+                val rect = Rect()
+                playerView?.getGlobalVisibleRect(rect)
+                val params = PictureInPictureParams.Builder()
+                    .setAspectRatio(Rational(16, 9))
+                    .setAutoEnterEnabled(autoPipEnabled && keepsAwake)
+                if (!rect.isEmpty()) params.setSourceRectHint(rect)
+                setPictureInPictureParams(params.build())
+            } catch (_: Exception) { /* Picture in Picture is optional. */ }
+        }
+        val showingVideo = activeStream.isNotBlank() || player.currentMediaItem != null
+        placeholderView?.visibility = if (showingVideo) View.GONE else View.VISIBLE
+        playbackBadge?.let {
+            it.text = if (showingVideo) "Lecture en cours" else "En attente"
+        }
+    }
+
+    private fun restoreSearchCache() {
+        val prefs = getSharedPreferences("acestream", MODE_PRIVATE)
+        if (prefs.getString("search_server", "") != server) return
+        query = prefs.getString("search_query", "") ?: ""
+        searchSource = prefs.getString("search_source", "site") ?: "site"
+        results = try {
+            val array = JSONArray(prefs.getString("search_results", "[]") ?: "[]")
+            (0 until minOf(array.length(), 200)).mapNotNull { index ->
+                val obj = array.optJSONObject(index) ?: return@mapNotNull null
+                val name = obj.optString("name")
+                val ref = obj.optString("ref")
+                if (name.isBlank() || ref.isBlank()) null else
+                    StreamItem(name, ref, category = obj.optString("category"))
+            }
+        } catch (_: Exception) { emptyList() }
+    }
+
+    private fun clearSearchCache() {
+        searchGeneration++
+        query = ""
+        searchSource = "site"
+        results = emptyList()
+        searchScrollY = 0
+        saveSearchCache()
+    }
+
+    private fun saveSearchCache() {
+        val array = JSONArray()
+        results.take(200).forEach { item ->
+            array.put(JSONObject().put("name", item.name).put("ref", item.ref)
+                .put("category", item.category))
+        }
+        getSharedPreferences("acestream", MODE_PRIVATE).edit()
+            .putString("search_user", user)
+            .putString("search_server", server)
+            .putString("search_query", query)
+            .putString("search_source", searchSource)
+            .putString("search_results", array.toString())
+            .apply()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (orientationListener.canDetectOrientation()) orientationListener.enable()
+    }
+
+    override fun onPause() {
+        orientationListener.disable()
+        super.onPause()
+    }
+
     private fun d(value: Int): Int = AceDesign.dp(this, value)
 
     private fun text(label: String, size: Float = 15f): TextView =
@@ -263,8 +425,14 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setup(title: String, navigation: Boolean = true) {
+        if (currentScreen == "Recherche") {
+            searchScrollY = screenScrollView?.scrollY ?: searchScrollY
+        }
         playerView?.player = null
         playerView = null
+        placeholderView = null
+        playbackBadge = null
+        fullscreen = false
         currentScreen = title
         root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -272,10 +440,19 @@ class MainActivity : AppCompatActivity() {
                 Color.rgb(12, 20, 39), AceDesign.bg, Color.rgb(14, 13, 34), radius = 0)
         }
         setContentView(root)
+        showSystemBars()
         window.statusBarColor = AceDesign.sidebar
         window.navigationBarColor = AceDesign.bg
-        @Suppress("DEPRECATION")
-        window.decorView.systemUiVisibility = 0
+        // Target SDK 35 draws below the system bars. Apply the real safe-area
+        // insets to the entire dashboard, including the bottom tab bar.
+        ViewCompat.setOnApplyWindowInsetsListener(root) { view, insets ->
+            val safe = insets.getInsets(
+                WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout()
+            )
+            view.setPadding(0, safe.top, 0, safe.bottom)
+            insets
+        }
+        ViewCompat.requestApplyInsets(root)
 
         if (navigation) {
             val header = row().apply {
@@ -315,6 +492,7 @@ class MainActivity : AppCompatActivity() {
             isFillViewport = false
             overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
         }
+        screenScrollView = scroller
         content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(d(16), d(if (navigation) 21 else 24), d(16), d(25))
@@ -431,6 +609,7 @@ class MainActivity : AppCompatActivity() {
             synchronized(cookies) { cookies.clear() }
             csrf = ""
             user = ""
+            clearSearchCache()
             getSharedPreferences("acestream", MODE_PRIVATE).edit().putString("server", server).apply()
             showLogin()
         }, 0)
@@ -448,12 +627,41 @@ class MainActivity : AppCompatActivity() {
         }, 0)
         addBox(account, 16)
 
+        val pipCard = card()
+        put(pipCard, heading("▣  Mini-lecteur automatique", 17f), 10)
+        val pipRow = row()
+        val pipLabels = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        put(pipLabels, heading("PiP en quittant l'application", 14f), 5)
+        put(pipLabels, caption(
+            "Réduire la vidéo quand tu reviens à l'accueil Android ou aux applications récentes."
+        ), 0)
+        pipRow.addView(pipLabels, LinearLayout.LayoutParams(0, -2, 1f)
+            .apply { marginEnd = d(10) })
+        val pipToggle = SwitchCompat(this).apply {
+            isChecked = autoPipEnabled
+            contentDescription = "Activer ou désactiver le PiP automatique"
+            thumbTintList = ColorStateList.valueOf(AceDesign.purple)
+            setOnCheckedChangeListener { _, checked ->
+                autoPipEnabled = checked
+                getSharedPreferences("acestream", MODE_PRIVATE).edit()
+                    .putBoolean("auto_pip", checked).apply()
+                updatePlaybackState()
+            }
+        }
+        pipRow.addView(pipToggle, LinearLayout.LayoutParams(-2, d(55)))
+        put(pipCard, pipRow, 12)
+        put(pipCard, caption(
+            "Tu peux toujours activer le PiP manuellement avec le bouton Mini-lecteur. " +
+            "Autorise également le mode Picture-in-Picture pour AceStream TV dans les paramètres Android."
+        ), 0)
+        addBox(pipCard, 16)
+
         val infos = card()
         put(infos, heading("🛡  Serveur et diffusion"), 9)
         put(infos, caption("Vérifie l'état du VPN, du moteur AceStream et des diffusions."), 13)
         put(infos, secondary("Consulter les informations système") { showStatus() }, 0)
         addBox(infos)
-        addBox(caption("AceStream TV · Android 1.2.0 · Application privée"), 3)
+        addBox(caption("AceStream TV · Android 1.3.0 · Application privée"), 3)
     }
 
     private fun showLogin() {
@@ -500,6 +708,8 @@ class MainActivity : AppCompatActivity() {
             if (given != server) {
                 synchronized(cookies) { cookies.clear() }
                 csrf = ""
+                server = given
+                clearSearchCache()
             }
             server = given
             getSharedPreferences("acestream", MODE_PRIVATE).edit().putString("server", server).apply()
@@ -510,8 +720,17 @@ class MainActivity : AppCompatActivity() {
                     put("username", username)
                     put("password", passwordValue)
                 })
-                user = result.getJSONObject("user").optString("username")
-                runOnUiThread { showPlayer() }
+                val signedInUser = result.getJSONObject("user").optString("username")
+                runOnUiThread {
+                    if (getSharedPreferences("acestream", MODE_PRIVATE)
+                            .getString("search_user", "") != signedInUser) {
+                        user = signedInUser
+                        clearSearchCache()
+                    } else {
+                        user = signedInUser
+                    }
+                    showPlayer()
+                }
             }
         }, 0)
         addBox(loginCard, 19)
@@ -552,10 +771,12 @@ class MainActivity : AppCompatActivity() {
         val playerCard = card()
         val header = row()
         header.addView(heading("▶  Lecteur vidéo", 18f), LinearLayout.LayoutParams(0, -2, 1f))
-        header.addView(AceDesign.chip(this,
-            if (activeStream.isBlank()) "En attente" else "En lecture",
+        val statusChip = AceDesign.chip(this,
+            if (activeStream.isBlank()) "En attente" else "Lecture en cours",
             if (activeStream.isBlank()) AceDesign.muted else AceDesign.green,
-            if (activeStream.isBlank()) Color.rgb(39, 49, 72) else Color.rgb(22, 55, 47)))
+            if (activeStream.isBlank()) Color.rgb(39, 49, 72) else Color.rgb(22, 55, 47))
+        playbackBadge = statusChip
+        header.addView(statusChip)
         put(playerCard, header, 13)
 
         val frame = FrameLayout(this).apply {
@@ -569,25 +790,33 @@ class MainActivity : AppCompatActivity() {
         }
         this.playerView = playerView
         frame.addView(playerView, FrameLayout.LayoutParams(-1, -1))
-        if (activeStream.isBlank()) {
-            val placeholder = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                gravity = Gravity.CENTER
-            }
-            put(placeholder, AceDesign.label(this, "▶", 41f, AceDesign.purple, true).apply {
-                gravity = Gravity.CENTER
-                background = AceDesign.fill(Color.rgb(49, 35, 93), 80, AceDesign.purple, this@MainActivity)
-                minWidth = d(73)
-                minHeight = d(73)
-            }, 8)
-            put(placeholder, heading("Prêt pour la lecture", 16f).apply {
-                gravity = Gravity.CENTER
-            }, 4)
-            put(placeholder, caption("Choisissez un résultat, un favori ou collez un identifiant.").apply {
-                gravity = Gravity.CENTER
-            }, 0)
-            frame.addView(placeholder, FrameLayout.LayoutParams(-1, -1))
+        // This placeholder is completely removed from the player surface
+        // as soon as an AceStream session or HLS media item exists.
+        val placeholder = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(d(10), d(8), d(10), d(8))
+            background = AceDesign.fill(Color.rgb(8, 14, 28), 14, context = this@MainActivity)
         }
+        val circularPlay = AceDesign.label(this, "▶", 37f, AceDesign.purple, true).apply {
+            gravity = Gravity.CENTER
+            background = AceDesign.fill(Color.rgb(49, 35, 93), 70,
+                AceDesign.purple, this@MainActivity)
+        }
+        placeholder.addView(circularPlay, LinearLayout.LayoutParams(d(74), d(74)).apply {
+            gravity = Gravity.CENTER_HORIZONTAL
+            bottomMargin = d(10)
+        })
+        placeholder.addView(heading("Prêt pour la lecture", 15f).apply {
+            gravity = Gravity.CENTER
+        }, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = d(5) })
+        placeholder.addView(caption(
+            "Choisissez un résultat, un favori ou collez un identifiant."
+        ).apply { gravity = Gravity.CENTER }, LinearLayout.LayoutParams(-1, -2))
+        placeholderView = placeholder
+        placeholder.visibility = if (activeStream.isNotBlank() ||
+            player.currentMediaItem != null) View.GONE else View.VISIBLE
+        frame.addView(placeholder, FrameLayout.LayoutParams(-1, -1))
         val screenWidth = resources.displayMetrics.widthPixels - d(68)
         put(playerCard, frame, 12)
         frame.layoutParams.height = ((screenWidth * 9f / 16f).toInt()).coerceAtLeast(d(185))
@@ -595,7 +824,16 @@ class MainActivity : AppCompatActivity() {
 
         val playerActions = row()
         val landscape = secondary("⛶  Plein écran", true) {
-            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+            if (activeStream.isBlank() && player.currentMediaItem == null) {
+                showMessage("Lance un flux avant de passer en plein écran.")
+            } else {
+                fullscreenRequestedByUser = true
+                if (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) {
+                    enterFullscreen()
+                } else {
+                    requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                }
+            }
         }
         val pip = secondary("▣  Mini-lecteur", true) { enterPip() }
         playerActions.addView(landscape, LinearLayout.LayoutParams(0, d(42), 1f).apply { marginEnd = d(8) })
@@ -639,6 +877,7 @@ class MainActivity : AppCompatActivity() {
         addBox(vpn.first, 10)
         addBox(engine.first, 10)
         addBox(broadcast.first, 10)
+        updatePlaybackState()
         background {
             val data = request("/api/monitor")
             val vpnData = data.optJSONObject("vpn")
@@ -687,11 +926,10 @@ class MainActivity : AppCompatActivity() {
                     player.playWhenReady = true
                     showMessage("Lecture en préparation…")
                 }
-                if (Build.VERSION.SDK_INT >= 31) {
-                    try {
-                        setPictureInPictureParams(PictureInPictureParams.Builder()
-                            .setAspectRatio(Rational(16, 9)).setAutoEnterEnabled(true).build())
-                    } catch (_: Exception) {}
+                updatePlaybackState()
+                if (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE &&
+                    !fullscreen && !suppressLandscapeFullscreen && !isInPictureInPictureMode) {
+                    enterFullscreen()
                 }
             }
         }
@@ -707,6 +945,8 @@ class MainActivity : AppCompatActivity() {
             castContext?.sessionManager?.currentCastSession?.remoteMediaClient?.stop()
         }
         castedStreamId = ""
+        updatePlaybackState()
+        if (fullscreen) exitFullscreen()
         showMessage("Lecture arrêtée")
         if (old.isNotBlank()) background { request("/api/streams/" + old, "DELETE") }
     }
@@ -754,6 +994,8 @@ class MainActivity : AppCompatActivity() {
             }
             query = requested
             searchSource = keys[selector.selectedItemPosition]
+            searchScrollY = 0
+            screenScrollView?.scrollTo(0, 0)
             val generation = ++searchGeneration
             val source = searchSource
             showMessage("Recherche en cours…")
@@ -773,6 +1015,7 @@ class MainActivity : AppCompatActivity() {
                         category = value.optString("category")
                     )
                 }
+                saveSearchCache()
                 runOnUiThread {
                     if (generation == searchGeneration && currentScreen == "Recherche") {
                         showSearch()
@@ -785,6 +1028,9 @@ class MainActivity : AppCompatActivity() {
             searchGeneration++
             query = ""
             results = emptyList()
+            searchScrollY = 0
+            screenScrollView?.scrollTo(0, 0)
+            saveSearchCache()
             showSearch()
         }, LinearLayout.LayoutParams(d(95), d(46)))
         put(searchCard, controls, 0)
@@ -803,6 +1049,9 @@ class MainActivity : AppCompatActivity() {
             addBox(empty)
         } else {
             results.forEach { addItem(it, favoriteAction = true) }
+        }
+        if (searchScrollY > 0) {
+            screenScrollView?.post { screenScrollView?.scrollTo(0, searchScrollY) }
         }
     }
 
@@ -924,49 +1173,174 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun restoreScreen(screen: String) {
+        when (screen) {
+            "Recherche" -> showSearch()
+            "Mes favoris" -> showFavorites()
+            "Historique" -> showHistory()
+            "Paramètres" -> showServerSettings()
+            "État du système" -> showStatus()
+            else -> showPlayer()
+        }
+    }
+
+    private fun enterFullscreen() {
+        if (fullscreen || isInPictureInPictureMode) return
+        if (activeStream.isBlank() && player.currentMediaItem == null) {
+            showMessage("Aucun flux à afficher en plein écran.")
+            return
+        }
+        screenBeforeFullscreen = currentScreen
+        fullscreen = true
+        playerView?.player = null
+        placeholderView = null
+        playbackBadge = null
+
+        val fullscreenFrame = FrameLayout(this).apply {
+            setBackgroundColor(Color.BLACK)
+            keepScreenOn = true
+        }
+        val video = PlayerView(this).apply {
+            player = this@MainActivity.player
+            useController = true
+            controllerShowTimeoutMs = 4500
+            setBackgroundColor(Color.BLACK)
+            resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
+        }
+        playerView = video
+        fullscreenFrame.addView(video, FrameLayout.LayoutParams(-1, -1))
+
+        // An on-screen exit control is mandatory: system bars and Back
+        // gestures are deliberately hidden while watching video.
+        val back = secondary("←  Retour au menu", true) { exitFullscreen() }.apply {
+            contentDescription = "Quitter le plein écran et retrouver les onglets"
+            background = AceDesign.fill(Color.rgb(24, 32, 52), 11,
+                AceDesign.border, this@MainActivity)
+        }
+        val backParams = FrameLayout.LayoutParams(-2, d(48),
+            Gravity.TOP or Gravity.START).apply {
+            leftMargin = d(14)
+            topMargin = d(14)
+        }
+        fullscreenFrame.addView(back, backParams)
+        ViewCompat.setOnApplyWindowInsetsListener(fullscreenFrame) { _, insets ->
+            // Keep the exit button outside the notch/cutout, but let the
+            // video itself occupy the screen edge-to-edge.
+            val cutout = insets.getInsets(WindowInsetsCompat.Type.displayCutout())
+            val lp = back.layoutParams as FrameLayout.LayoutParams
+            val left = d(14) + cutout.left
+            val top = d(14) + cutout.top
+            if (lp.leftMargin != left || lp.topMargin != top) {
+                lp.leftMargin = left
+                lp.topMargin = top
+                back.layoutParams = lp
+            }
+            insets
+        }
+        setContentView(fullscreenFrame)
+        hideSystemBars()
+        ViewCompat.requestApplyInsets(fullscreenFrame)
+        updatePlaybackState()
+    }
+
+    private fun exitFullscreen() {
+        if (!fullscreen) return
+        fullscreen = false
+        playerView?.player = null
+        playerView = null
+        val restore = screenBeforeFullscreen
+        if (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) {
+            // Explicitly leaving fullscreen should not immediately
+            // force the same landscape frame back into fullscreen.
+            suppressLandscapeFullscreen = true
+        }
+        if (fullscreenRequestedByUser) {
+            fullscreenRequestedByUser = false
+            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        }
+        showSystemBars()
+        restoreScreen(restore)
+    }
+
     private fun enterPip() {
-        if (Build.VERSION.SDK_INT >= 26 && player.currentMediaItem != null) {
-            try { enterPictureInPictureMode(PictureInPictureParams.Builder().setAspectRatio(Rational(16, 9)).build()) }
-            catch (_: Exception) { showMessage("PiP non pris en charge sur cet appareil.") }
+        if (!shouldOfferPip()) {
+            showMessage("Lance un flux sur le téléphone avant d'activer le mini-lecteur.")
+            return
+        }
+        try {
+            val builder = PictureInPictureParams.Builder()
+                .setAspectRatio(Rational(16, 9))
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                builder.setAutoEnterEnabled(autoPipEnabled)
+            }
+            enterPictureInPictureMode(builder.build())
+        } catch (_: Exception) {
+            showMessage("Vérifie l'autorisation Picture-in-Picture d'AceStream TV dans Android.")
         }
     }
 
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
-        if (Build.VERSION.SDK_INT in 26..30 && player.isPlaying) enterPip()
+        // Android 12+ enters smoothly via setAutoEnterEnabled; Android
+        // 8-11 requires a manual transition when the user presses Home.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S &&
+            autoPipEnabled && shouldOfferPip()) {
+            enterPip()
+        }
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
-        if (activeStream.isNotBlank() && newConfig.orientation == Configuration.ORIENTATION_LANDSCAPE) {
-            playerView?.player = null
-            val view = PlayerView(this).apply {
-                player = this@MainActivity.player
-                useController = true
-                setBackgroundColor(Color.BLACK)
+        if (isInPictureInPictureMode) return
+        if (newConfig.orientation == Configuration.ORIENTATION_PORTRAIT) {
+            suppressLandscapeFullscreen = false
+            if (fullscreen) exitFullscreen()
+        } else if (newConfig.orientation == Configuration.ORIENTATION_LANDSCAPE) {
+            if ((activeStream.isNotBlank() || player.currentMediaItem != null) &&
+                !fullscreen && !suppressLandscapeFullscreen) {
+                enterFullscreen()
             }
-            playerView = view
-            setContentView(view)
-        } else if (user.isNotBlank()) {
-            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-            showPlayer()
         }
     }
 
-    override fun onPictureInPictureModeChanged(inPictureInPictureMode: Boolean, newConfig: Configuration) {
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus && fullscreen && !isInPictureInPictureMode) hideSystemBars()
+    }
+
+    override fun onPictureInPictureModeChanged(
+        inPictureInPictureMode: Boolean, newConfig: Configuration
+    ) {
         super.onPictureInPictureModeChanged(inPictureInPictureMode, newConfig)
         if (inPictureInPictureMode) {
+            screenBeforePip = if (fullscreen) screenBeforeFullscreen else currentScreen
             playerView?.player = null
-            val view = PlayerView(this).apply {
+            playerView = null
+            fullscreen = false
+            val pipPlayer = PlayerView(this).apply {
                 player = this@MainActivity.player
                 useController = false
+                setBackgroundColor(Color.BLACK)
             }
-            playerView = view
-            setContentView(view)
-        } else if (user.isNotBlank()) showPlayer()
+            playerView = pipPlayer
+            setContentView(pipPlayer)
+        } else {
+            playerView?.player = null
+            playerView = null
+            fullscreen = false
+            showSystemBars()
+            restoreScreen(screenBeforePip)
+            if (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE &&
+                activeStream.isNotBlank() && !suppressLandscapeFullscreen) {
+                enterFullscreen()
+            }
+        }
+        updatePlaybackState()
     }
 
     override fun onDestroy() {
+        orientationListener.disable()
+        window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         playerView?.player = null
         castListener?.let { listener ->
             castContext?.sessionManager?.removeSessionManagerListener(listener, CastSession::class.java)

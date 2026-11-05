@@ -1,4 +1,4 @@
-# AceStream TV pour Android — version 1.2.0
+# AceStream TV pour Android — version 1.3.0
 
 Application **Android native** (Kotlin, vues Android AppCompat + Media3), privée et sans Play Store. L'interface reprend l'identité graphique d'AceStream Web : fond marine sombre, cartes arrondies, contours subtils, boutons violets dégradés et navigation fixe à cinq onglets.
 
@@ -21,3 +21,16 @@ L'APK GitHub est **une version debug signée automatiquement**, réservée à un
 
 L'application requiert Android 8 ou plus récent, l'accès réseau à ton serveur AceStream Web, et Google Play Services pour Google Cast. Aucune modification Docker n'est requise. La vidéo P2P reste traitée sur Debian derrière Gluetun/ProtonVPN ; le téléphone lit du HLS.
 
+
+## Corrections Android 1.3
+
+- **Barre inférieure** : gestion des marges système Android 15+ (barre d'état et barre de navigation) via `WindowInsetsCompat`. La navigation de l'application reste au-dessus des gestes Android.
+- **Recherche** : le dernier mot-clé, la source et les résultats sont conservés lorsque tu reviens de la lecture (et entre les démarrages si tu te reconnectes au même compte sur le même serveur). Le scroll de la liste est mémorisé pendant les changements d'onglet. Le bouton Effacer supprime également le cache local.
+- **Lecture** : le panneau « Prêt pour la lecture » et son cercle Play disparaissent dès le lancement réel du flux. Le grand bouton Play ne s'étire plus sur toute la largeur du lecteur.
+- **Rotation et plein écran** : quand un flux est en lecture et le téléphone tourne en paysage, affichage vidéo immersif avec la barre d'état et les gestes Android masqués. Un bouton **Retour au menu** sur l'image et le bouton Retour du téléphone permettent de revenir à l'interface. La rotation revient au portrait via le capteur, même si le verrouillage de rotation global est actif.
+- **Veille** : tant qu'une lecture locale est demandée (même pendant le chargement/buffering), le téléphone ne se met pas en veille ; cette protection est levée à l'arrêt ou lors d'une pause.
+- **Picture-in-Picture automatique** : option activée par défaut, réglable depuis **Paramètres → Mini-lecteur automatique**. En quittant avec Accueil/Applications récentes, Android 12+ utilise `setAutoEnterEnabled` ; Android 8–11 utilise `onUserLeaveHint`. Le bouton PiP manuel fonctionne indépendamment de ce réglage. Il faut autoriser l'affichage PiP pour l'application dans les paramètres Android.
+- **Compte et confidentialité** : le cache des recherches est local et associé au serveur + utilisateur ; il est effacé lors du changement d'adresse ou de compte.
+- Chromecast, compte, favoris et serveur Docker demeurent inchangés.
+
+**Validation** : la compilation GitHub vérifie les ressources et le code Kotlin. Un test sur appareil réel reste nécessaire pour confirmer les transitions de rotation, la navigation gestuelle et la compatibilité PiP selon la version de One UI.
