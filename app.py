@@ -590,7 +590,7 @@ def create_app(config=None):
     @app.get("/cast/<token>/<filename>")
     def cast_segment(token, filename):
         import re
-        if not re.fullmatch(r"index\\d+\\.ts", filename):
+        if not re.fullmatch(r"index\d+\.ts", filename):
             abort(404)
         item = valid_cast_item_or_404(token)
         return send_from_directory(item["directory"], filename, max_age=0)
