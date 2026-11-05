@@ -106,7 +106,7 @@ class MainActivity : AppCompatActivity() {
                         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
                     }
                 } else if (isLandscape &&
-                    (activeStream.isNotBlank() || player.currentMediaItem != null) &&
+                    player.currentMediaItem != null &&
                     !fullscreen && !suppressLandscapeFullscreen &&
                     requestedOrientation != ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE) {
                     requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
@@ -824,8 +824,8 @@ class MainActivity : AppCompatActivity() {
 
         val playerActions = row()
         val landscape = secondary("⛶  Plein écran", true) {
-            if (activeStream.isBlank() && player.currentMediaItem == null) {
-                showMessage("Lance un flux avant de passer en plein écran.")
+            if (player.currentMediaItem == null) {
+                showMessage("Lance une vidéo locale avant de passer en plein écran.")
             } else {
                 fullscreenRequestedByUser = true
                 if (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) {
@@ -1186,8 +1186,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun enterFullscreen() {
         if (fullscreen || isInPictureInPictureMode) return
-        if (activeStream.isBlank() && player.currentMediaItem == null) {
-            showMessage("Aucun flux à afficher en plein écran.")
+        if (player.currentMediaItem == null) {
+            showMessage("Aucune vidéo locale à afficher en plein écran.")
             return
         }
         screenBeforeFullscreen = currentScreen
@@ -1296,7 +1296,7 @@ class MainActivity : AppCompatActivity() {
             suppressLandscapeFullscreen = false
             if (fullscreen) exitFullscreen()
         } else if (newConfig.orientation == Configuration.ORIENTATION_LANDSCAPE) {
-            if ((activeStream.isNotBlank() || player.currentMediaItem != null) &&
+            if (player.currentMediaItem != null &&
                 !fullscreen && !suppressLandscapeFullscreen) {
                 enterFullscreen()
             }
@@ -1331,7 +1331,7 @@ class MainActivity : AppCompatActivity() {
             showSystemBars()
             restoreScreen(screenBeforePip)
             if (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE &&
-                activeStream.isNotBlank() && !suppressLandscapeFullscreen) {
+                player.currentMediaItem != null && !suppressLandscapeFullscreen) {
                 enterFullscreen()
             }
         }
