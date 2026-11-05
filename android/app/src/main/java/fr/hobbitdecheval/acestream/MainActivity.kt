@@ -806,9 +806,6 @@ class MainActivity : AppCompatActivity() {
             setAutofillHints(View.AUTOFILL_HINT_USERNAME)
             importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_YES
             imeOptions = EditorInfo.IME_ACTION_NEXT
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                isCredential = true
-            }
         }
         val password = field("Mot de passe").apply {
             id = View.generateViewId()
@@ -817,9 +814,6 @@ class MainActivity : AppCompatActivity() {
             setAutofillHints(View.AUTOFILL_HINT_PASSWORD)
             importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_YES
             imeOptions = EditorInfo.IME_ACTION_DONE
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                isCredential = true
-            }
         }
         login.nextFocusForwardId = password.id
         login.nextFocusDownId = password.id
