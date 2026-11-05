@@ -9,8 +9,8 @@ android {
         applicationId = "fr.hobbitdecheval.acestream"
         minSdk = 26
         targetSdk = 35
-        versionCode = 4
-        versionName = "1.3.0"
+        versionCode = 5
+        versionName = "1.4.0"
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -19,6 +19,7 @@ android {
 }
 dependencies {
     implementation("androidx.appcompat:appcompat:1.7.1")
+    implementation("androidx.biometric:biometric:1.1.0")
     implementation("androidx.mediarouter:mediarouter:1.8.1")
     implementation("com.google.android.gms:play-services-cast-framework:22.3.1")
     implementation("androidx.media3:media3-exoplayer:1.11.1")

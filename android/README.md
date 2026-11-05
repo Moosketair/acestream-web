@@ -1,6 +1,6 @@
-# AceStream TV pour Android — version 1.3.0
+# AceStream TV pour Android — version 1.4.0
 
-Application **Android native** (Kotlin, vues Android AppCompat + Media3), privée et sans Play Store. L'interface reprend l'identité graphique d'AceStream Web : fond marine sombre, cartes arrondies, contours subtils, boutons violets dégradés et navigation fixe à cinq onglets.
+Application **Android native** (Kotlin, vues Android AppCompat + Media3), privée et sans Play Store. L'interface reprend l'identité graphique d'AceStream Web : fond marine sombre, cartes arrondies, contours subtils, boutons violets dégradés et navigation fixe à quatre onglets et raccourci Paramètres en haut à droite.
 
 ## Nouveautés de la version 1.2
 
@@ -34,3 +34,12 @@ L'application requiert Android 8 ou plus récent, l'accès réseau à ton serveu
 - Chromecast, compte, favoris et serveur Docker demeurent inchangés.
 
 **Validation** : la compilation GitHub vérifie les ressources et le code Kotlin. Un test sur appareil réel reste nécessaire pour confirmer les transitions de rotation, la navigation gestuelle et la compatibilité PiP selon la version de One UI.
+
+## Nouveautés Android 1.4
+
+- **Empreinte digitale (facultative)** : sur l'écran de connexion, cocher « Activer la connexion par empreinte » puis effectuer une connexion classique réussie pour enregistrer les identifiants. Après confirmation biométrique, les identifiants sont chiffrés avec AES-GCM par une clé du Keystore Android exigeant **BIOMETRIC_STRONG à chaque usage**. Le mot de passe n'est **jamais enregistré en clair**, ni dans les sources ni dans les préférences Android. Au prochain lancement, toucher « Se connecter avec mon empreinte » pour déverrouiller les identifiants et se connecter à l'API existante. L'adresse doit être en **HTTPS**. En cas de suppression/changement des empreintes enregistrées, de changement de protection d'écran ou de réinstallation, refaire une connexion par mot de passe. Une option **Désactiver l'empreinte** dans Paramètres efface les données chiffrées et la clé. Le stockage local ne remplace pas le contrôle du serveur ; une révocation du compte/mot de passe impose une connexion normale.
+- **Animation de chargement** : anneau indéterminé violet au centre de la vidéo pendant la création du flux et durant le buffering HLS, disparaissant au passage de Media3 à l'état READY. Une erreur affiche le message et arrête l'animation. Les retours tardifs d'anciennes demandes de lecture sont ignorés.
+- **Grand bouton Play corrigé** : cercle réduit de 74dp à 58dp et triangle vectoriel centré dans un vrai conteneur circulaire, avec correction optique de 3dp.
+- **Interface simplifiée** : supprimer « Diffuser sur Chromecast » sous le lecteur (le bouton Cast de l'en-tête reste opérationnel), et supprimer l'onglet Paramètres de la barre inférieure (accès conservé par l'icône ⚙ en haut). Barre inférieure à **Accueil, Recherche, Favoris, Historique**.
+- Aucun changement sur le serveur, la recherche et les favoris. Version installable via le workflow GitHub Actions.
+

@@ -90,6 +90,10 @@ class MainActivity : AppCompatActivity() {
     private var screenBeforeFullscreen = "Tableau de bord"
     private var placeholderView: android.view.View? = null
     private var playbackBadge: TextView? = null
+    private var loadingOverlay: View? = null
+    private var playbackStarting = false
+    private var playbackGeneration = 0
+    private val biometricLogin by lazy { BiometricLogin(this) }
     private val orientationListener by lazy {
         object : OrientationEventListener(this, SensorManager.SENSOR_DELAY_NORMAL) {
             override fun onOrientationChanged(degrees: Int) {
@@ -160,6 +164,7 @@ class MainActivity : AppCompatActivity() {
         player.addListener(object : Player.Listener {
             override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
                 runOnUiThread {
+                    playbackStarting = false
                     showMessage("Lecture impossible : " + error.message.orEmpty())
                     updatePlaybackState()
                 }
@@ -329,10 +334,20 @@ class MainActivity : AppCompatActivity() {
                 setPictureInPictureParams(params.build())
             } catch (_: Exception) { /* Picture in Picture is optional. */ }
         }
-        val showingVideo = activeStream.isNotBlank() || player.currentMediaItem != null
+        if (player.playbackState == Player.STATE_READY) playbackStarting = false
+        val buffering = player.currentMediaItem != null &&
+            player.playWhenReady && player.playbackState == Player.STATE_BUFFERING
+        val waiting = playbackStarting || buffering
+        val showingVideo = activeStream.isNotBlank() ||
+            player.currentMediaItem != null || waiting
         placeholderView?.visibility = if (showingVideo) View.GONE else View.VISIBLE
+        loadingOverlay?.visibility = if (waiting) View.VISIBLE else View.GONE
         playbackBadge?.let {
-            it.text = if (showingVideo) "Lecture en cours" else "En attente"
+            it.text = when {
+                waiting -> "Chargement…"
+                showingVideo -> "Lecture en cours"
+                else -> "En attente"
+            }
         }
     }
 
@@ -432,6 +447,7 @@ class MainActivity : AppCompatActivity() {
         playerView = null
         placeholderView = null
         playbackBadge = null
+        loadingOverlay = null
         fullscreen = false
         currentScreen = title
         root = LinearLayout(this).apply {
@@ -527,11 +543,10 @@ class MainActivity : AppCompatActivity() {
                 Triple("Accueil", R.drawable.ic_nav_home, "Tableau de bord"),
                 Triple("Recherche", R.drawable.ic_nav_search, "Recherche"),
                 Triple("Favoris", R.drawable.ic_nav_star, "Mes favoris"),
-                Triple("Historique", R.drawable.ic_nav_history, "Historique"),
-                Triple("Paramètres", R.drawable.ic_nav_settings, "Paramètres")
+                Triple("Historique", R.drawable.ic_nav_history, "Historique")
             )
             for ((index, tab) in tabs.withIndex()) {
-                val active = title == tab.third || (title == "État du système" && index == 4)
+                val active = title == tab.third
                 val tabView = LinearLayout(this).apply {
                     gravity = Gravity.CENTER
                     orientation = LinearLayout.VERTICAL
@@ -544,8 +559,7 @@ class MainActivity : AppCompatActivity() {
                             0 -> showPlayer()
                             1 -> showSearch()
                             2 -> showFavorites()
-                            3 -> showHistory()
-                            else -> showServerSettings()
+                            else -> showHistory()
                         }
                     }
                     isClickable = true
@@ -561,7 +575,7 @@ class MainActivity : AppCompatActivity() {
                     if (active) AceDesign.text else AceDesign.muted, active),
                     LinearLayout.LayoutParams(-2, -2).apply { topMargin = d(5) })
                 nav.addView(tabView, LinearLayout.LayoutParams(0, d(60), 1f).apply {
-                    marginEnd = if (index == 4) 0 else d(3)
+                    marginEnd = if (index == tabs.lastIndex) 0 else d(3)
                 })
             }
             root.addView(View(this).apply { setBackgroundColor(AceDesign.border) },
@@ -627,6 +641,26 @@ class MainActivity : AppCompatActivity() {
         }, 0)
         addBox(account, 16)
 
+        val biometricCard = card()
+        put(biometricCard, heading("◉  Connexion par empreinte", 17f), 8)
+        val enrolledUser = biometricLogin.savedUser(server)
+        put(biometricCard, caption(when {
+            !biometricLogin.available() ->
+                "L'empreinte forte n'est pas configurée ou prise en charge sur cet appareil."
+            enrolledUser != null ->
+                "Activée pour le compte " + enrolledUser + " sur ce serveur."
+            else ->
+                "Pour l'activer, déconnecte-toi puis coche l'option sur la page de connexion."
+        }), 12)
+        if (enrolledUser != null) {
+            put(biometricCard, secondary("✕  Désactiver l'empreinte") {
+                biometricLogin.forget()
+                showServerSettings()
+                showMessage("Les identifiants biométriques ont été supprimés du téléphone.")
+            }, 0)
+        }
+        addBox(biometricCard, 16)
+
         val pipCard = card()
         put(pipCard, heading("▣  Mini-lecteur automatique", 17f), 10)
         val pipRow = row()
@@ -664,6 +698,34 @@ class MainActivity : AppCompatActivity() {
         addBox(caption("AceStream TV · Android 1.3.0 · Application privée"), 3)
     }
 
+    private fun signIn(username: String, password: String,
+                       enableBiometricAfterLogin: Boolean = false) {
+        showMessage("Connexion au serveur…")
+        background {
+            request("/api/auth/session")
+            val response = request("/api/auth/login", "POST", JSONObject().apply {
+                put("username", username)
+                put("password", password)
+            })
+            val signedInUser = response.getJSONObject("user").optString("username")
+            runOnUiThread {
+                if (getSharedPreferences("acestream", MODE_PRIVATE)
+                        .getString("search_user", "") != signedInUser) {
+                    user = signedInUser
+                    clearSearchCache()
+                } else {
+                    user = signedInUser
+                }
+                showPlayer()
+                if (enableBiometricAfterLogin && biometricLogin.available()) {
+                    biometricLogin.enable(server, signedInUser, password) { _, status ->
+                        showMessage(status)
+                    }
+                }
+            }
+        }
+    }
+
     private fun showLogin() {
         setup("Connexion", navigation = false)
         val logo = ImageView(this).apply {
@@ -683,16 +745,35 @@ class MainActivity : AppCompatActivity() {
 
         val loginCard = card(inset = 16)
         val address = field("Adresse HTTP(S) du serveur", server).apply {
-            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_URI
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or
+                android.text.InputType.TYPE_TEXT_VARIATION_URI
         }
-        val login = field("Nom d'utilisateur")
+        val login = field("Nom d'utilisateur", biometricLogin.savedUser(server) ?: "")
         val password = field("Mot de passe").apply {
             inputType = android.text.InputType.TYPE_CLASS_TEXT or
                 android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
         }
         put(loginCard, labelledInput("Adresse du serveur", address), 14)
         put(loginCard, labelledInput("Nom d'utilisateur", login), 14)
-        put(loginCard, labelledInput("Mot de passe", password), 23)
+        put(loginCard, labelledInput("Mot de passe", password), 14)
+
+        val fingerprintAvailable = biometricLogin.available()
+        val enrollCheckbox = CheckBox(this).apply {
+            text = "Activer la connexion par empreinte après cette connexion"
+            setTextColor(AceDesign.text)
+            textSize = 13f
+            buttonTintList = ColorStateList.valueOf(AceDesign.purple)
+            isChecked = false
+            isEnabled = fingerprintAvailable
+        }
+        if (fingerprintAvailable) {
+            put(loginCard, enrollCheckbox, 7)
+            put(loginCard, caption(
+                "Facultatif : identifiants chiffrés dans le coffre sécurisé Android, " +
+                "déverrouillés uniquement avec ton empreinte. HTTPS obligatoire."
+            ), 15)
+        }
+
         put(loginCard, button("→  Se connecter") {
             val given = normalizedServer(address.text.toString())
             if (given == null) {
@@ -710,33 +791,52 @@ class MainActivity : AppCompatActivity() {
                 csrf = ""
                 server = given
                 clearSearchCache()
+                biometricLogin.forget()
             }
             server = given
-            getSharedPreferences("acestream", MODE_PRIVATE).edit().putString("server", server).apply()
-            showMessage("Connexion à ton serveur…")
-            background {
-                request("/api/auth/session")
-                val result = request("/api/auth/login", "POST", JSONObject().apply {
-                    put("username", username)
-                    put("password", passwordValue)
-                })
-                val signedInUser = result.getJSONObject("user").optString("username")
-                runOnUiThread {
-                    if (getSharedPreferences("acestream", MODE_PRIVATE)
-                            .getString("search_user", "") != signedInUser) {
-                        user = signedInUser
-                        clearSearchCache()
-                    } else {
-                        user = signedInUser
-                    }
-                    showPlayer()
-                }
+            getSharedPreferences("acestream", MODE_PRIVATE)
+                .edit().putString("server", server).apply()
+            val biometricRequested = fingerprintAvailable && enrollCheckbox.isChecked
+            if (biometricRequested && !server.startsWith("https://", true)) {
+                showMessage("Désactive l'empreinte ou utilise une adresse HTTPS.")
+                return@button
             }
-        }, 0)
+            signIn(username, passwordValue, biometricRequested)
+        }, 9)
+
+        val savedUser = biometricLogin.savedUser(server)
+        if (fingerprintAvailable && savedUser != null) {
+            put(loginCard, secondary("◉  Se connecter avec mon empreinte") {
+                val given = normalizedServer(address.text.toString())
+                if (given == null || biometricLogin.savedUser(given) == null) {
+                    showMessage("Cette empreinte est enregistrée pour une autre adresse serveur.")
+                    return@secondary
+                }
+                if (given != server) {
+                    synchronized(cookies) { cookies.clear() }
+                    csrf = ""
+                    server = given
+                    clearSearchCache()
+                }
+                getSharedPreferences("acestream", MODE_PRIVATE)
+                    .edit().putString("server", server).apply()
+                biometricLogin.authenticate(server,
+                    { savedLogin, decryptedPassword ->
+                        login.setText(savedLogin)
+                        password.setText("")
+                        signIn(savedLogin, decryptedPassword)
+                    },
+                    { error -> showMessage(error) })
+            }, 0)
+        }
         addBox(loginCard, 19)
+
         val tip = card(inset = 13)
         put(tip, heading("ⓘ  Adresse personnalisable", 14f), 5)
-        put(tip, caption("Tu peux utiliser ton domaine HTTPS ou l'adresse IP locale de ton serveur. Cette adresse restera mémorisée."), 0)
+        put(tip, caption(
+            "Utilise ton domaine HTTPS ou l'adresse IP locale de ton serveur. " +
+            "L'adresse reste mémorisée sur ton téléphone."
+        ), 0)
         addBox(tip, 28)
     }
 
@@ -796,16 +896,26 @@ class MainActivity : AppCompatActivity() {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
             setPadding(d(10), d(8), d(10), d(8))
-            background = AceDesign.fill(Color.rgb(8, 14, 28), 14, context = this@MainActivity)
+            background = AceDesign.fill(Color.rgb(8, 14, 28), 14,
+                context = this@MainActivity)
         }
-        val circularPlay = AceDesign.label(this, "▶", 37f, AceDesign.purple, true).apply {
-            gravity = Gravity.CENTER
-            background = AceDesign.fill(Color.rgb(49, 35, 93), 70,
+        val circularPlay = FrameLayout(this).apply {
+            background = AceDesign.fill(Color.rgb(49, 35, 93), 80,
                 AceDesign.purple, this@MainActivity)
         }
-        placeholder.addView(circularPlay, LinearLayout.LayoutParams(d(74), d(74)).apply {
+        val playSymbol = ImageView(this).apply {
+            setImageResource(R.drawable.ic_play_centered)
+            contentDescription = "Lecture"
+            scaleType = ImageView.ScaleType.FIT_CENTER
+        }
+        circularPlay.addView(playSymbol, FrameLayout.LayoutParams(d(26), d(26),
+            Gravity.CENTER).apply {
+            // Triangle has more visual mass to its left: optical correction.
+            leftMargin = d(3)
+        })
+        placeholder.addView(circularPlay, LinearLayout.LayoutParams(d(58), d(58)).apply {
             gravity = Gravity.CENTER_HORIZONTAL
-            bottomMargin = d(10)
+            bottomMargin = d(12)
         })
         placeholder.addView(heading("Prêt pour la lecture", 15f).apply {
             gravity = Gravity.CENTER
@@ -814,9 +924,34 @@ class MainActivity : AppCompatActivity() {
             "Choisissez un résultat, un favori ou collez un identifiant."
         ).apply { gravity = Gravity.CENTER }, LinearLayout.LayoutParams(-1, -2))
         placeholderView = placeholder
-        placeholder.visibility = if (activeStream.isNotBlank() ||
-            player.currentMediaItem != null) View.GONE else View.VISIBLE
         frame.addView(placeholder, FrameLayout.LayoutParams(-1, -1))
+
+        // Indeterminate animation while the AceStream server prepares a stream
+        // and whenever Media3 needs to buffer a new HLS segment.
+        val loading = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setBackgroundColor(Color.argb(231, 8, 14, 28))
+            visibility = View.GONE
+        }
+        val spinner = ProgressBar(this).apply {
+            isIndeterminate = true
+            indeterminateTintList = ColorStateList.valueOf(AceDesign.purple)
+        }
+        loading.addView(spinner, LinearLayout.LayoutParams(d(49), d(49)).apply {
+            gravity = Gravity.CENTER_HORIZONTAL
+            bottomMargin = d(10)
+        })
+        loading.addView(heading("Chargement du flux…", 14f).apply {
+            gravity = Gravity.CENTER
+        })
+        loading.addView(caption("Connexion au moteur AceStream").apply {
+            gravity = Gravity.CENTER
+        }, LinearLayout.LayoutParams(-1, -2).apply {
+            topMargin = d(6)
+        })
+        loadingOverlay = loading
+        frame.addView(loading, FrameLayout.LayoutParams(-1, -1))
         val screenWidth = resources.displayMetrics.widthPixels - d(68)
         put(playerCard, frame, 12)
         frame.layoutParams.height = ((screenWidth * 9f / 16f).toInt()).coerceAtLeast(d(185))
@@ -851,11 +986,8 @@ class MainActivity : AppCompatActivity() {
         buttons.addView(secondary("■  Arrêter", true) { stop() },
             LinearLayout.LayoutParams(0, d(43), 1f))
         put(playerCard, buttons, 9)
-        if (castContext != null) {
-            put(playerCard, secondary("▣  Diffuser sur Chromecast", true) { castActiveStream() }, 0)
-        } else {
-            put(playerCard, caption("Google Cast disponible sur les appareils compatibles."), 0)
-        }
+        // Google Cast is available from the header; avoid a duplicate
+        // button that pushes the player controls further down the screen.
         addBox(playerCard, 18)
 
         addBox(heading("Accès rapide", 18f), 12)
@@ -901,41 +1033,80 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun play(item: StreamItem) {
+        val generation = ++playbackGeneration
+        val previousStream = activeStream
+        activeStream = ""
+        activeName = item.name
+        // Stop the old media before showing the new loading animation.
+        player.stop()
+        player.clearMediaItems()
+        playbackStarting = true
         showPlayer()
-        showMessage("Préparation du flux AceStream…")
-        background {
-            if (activeStream.isNotBlank()) {
-                try { request("/api/streams/" + activeStream, "DELETE") } catch (_: Exception) {}
-            }
-            val result = request("/api/streams/start", "POST", JSONObject().apply {
-                put("content_id", item.ref)
-                put("name", item.name)
-            })
-            activeStream = result.getString("stream_id")
-            activeName = item.name
-            val playlist = server + result.getString("playlist")
-            runOnUiThread {
-                if (castContext?.sessionManager?.currentCastSession?.isConnected == true) {
-                    player.stop()
-                    player.clearMediaItems()
-                    castActiveStream()
-                } else {
-                    player.setMediaItem(MediaItem.Builder()
-                        .setUri(playlist).setMimeType(MimeTypes.APPLICATION_M3U8).build())
-                    player.prepare()
-                    player.playWhenReady = true
-                    showMessage("Lecture en préparation…")
+        updatePlaybackState()
+        showMessage("Connexion au flux AceStream…")
+
+        executor.execute {
+            try {
+                if (previousStream.isNotBlank()) {
+                    try { request("/api/streams/" + previousStream, "DELETE") }
+                    catch (_: Exception) { /* The previous stream may have ended. */ }
                 }
-                updatePlaybackState()
-                if (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE &&
-                    !fullscreen && !suppressLandscapeFullscreen && !isInPictureInPictureMode) {
-                    enterFullscreen()
+                val result = request("/api/streams/start", "POST", JSONObject().apply {
+                    put("content_id", item.ref)
+                    put("name", item.name)
+                })
+                val streamId = result.getString("stream_id")
+                val playlist = server + result.getString("playlist")
+
+                runOnUiThread {
+                    if (generation != playbackGeneration) {
+                        // Playback was cancelled while the server prepared the stream.
+                        executor.execute {
+                            try { request("/api/streams/" + streamId, "DELETE") }
+                            catch (_: Exception) {}
+                        }
+                        return@runOnUiThread
+                    }
+                    activeStream = streamId
+                    activeName = item.name
+                    if (castContext?.sessionManager?.currentCastSession?.isConnected == true) {
+                        playbackStarting = false
+                        player.stop()
+                        player.clearMediaItems()
+                        castActiveStream()
+                    } else {
+                        player.setMediaItem(
+                            MediaItem.Builder()
+                                .setUri(playlist)
+                                .setMimeType(MimeTypes.APPLICATION_M3U8)
+                                .build()
+                        )
+                        player.prepare()
+                        player.playWhenReady = true
+                        showMessage("Chargement de la vidéo…")
+                    }
+                    updatePlaybackState()
+                    if (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE &&
+                        !fullscreen && !suppressLandscapeFullscreen && !isInPictureInPictureMode) {
+                        enterFullscreen()
+                    }
+                }
+            } catch (error: Exception) {
+                runOnUiThread {
+                    if (generation != playbackGeneration) return@runOnUiThread
+                    playbackStarting = false
+                    activeStream = ""
+                    activeName = ""
+                    updatePlaybackState()
+                    showMessage("Lecture impossible : " + (error.message ?: "Flux indisponible"))
                 }
             }
         }
     }
 
     private fun stop() {
+        playbackGeneration++
+        playbackStarting = false
         val old = activeStream
         activeStream = ""
         activeName = ""
