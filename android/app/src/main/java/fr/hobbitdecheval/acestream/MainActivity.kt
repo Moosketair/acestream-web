@@ -3,6 +3,9 @@ package fr.hobbitdecheval.acestream
 import android.app.Activity
 import android.view.Gravity
 import android.view.View
+import android.view.autofill.AutofillManager
+import android.view.inputmethod.EditorInfo
+import android.view.KeyEvent
 import android.widget.ImageView
 import android.graphics.Typeface
 import androidx.appcompat.app.AppCompatActivity
@@ -734,7 +737,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun signIn(username: String, password: String,
-                       enableBiometricAfterLogin: Boolean = false) {
+                       enableBiometricAfterLogin: Boolean = false,
+                       allowAutofillSave: Boolean = false) {
         showMessage("Connexion au serveur…")
         background {
             request("/api/auth/session")
@@ -744,6 +748,17 @@ class MainActivity : AppCompatActivity() {
             })
             val signedInUser = response.getJSONObject("user").optString("username")
             runOnUiThread {
+                // The password manager can offer to save a new login only
+                // after the server has accepted the entered credentials.
+                // Commit while the username/password EditTexts are still in
+                // the view hierarchy, before we switch to the dashboard.
+                if (allowAutofillSave) {
+                    try {
+                        getSystemService(AutofillManager::class.java)?.commit()
+                    } catch (_: Exception) {
+                        // Autofill is optional and must never block sign-in.
+                    }
+                }
                 if (getSharedPreferences("acestream", MODE_PRIVATE)
                         .getString("search_user", "") != signedInUser) {
                     user = signedInUser
@@ -782,11 +797,41 @@ class MainActivity : AppCompatActivity() {
         val address = field("Adresse HTTP(S) du serveur", server).apply {
             inputType = android.text.InputType.TYPE_CLASS_TEXT or
                 android.text.InputType.TYPE_TEXT_VARIATION_URI
+            // An editable server URL isn't an account credential.
+            importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO
         }
-        val login = field("Nom d'utilisateur", biometricLogin.savedUser(server) ?: "")
+        val login = field("Nom d'utilisateur", biometricLogin.savedUser(server) ?: "").apply {
+            id = View.generateViewId()
+            inputType = android.text.InputType.TYPE_CLASS_TEXT
+            setAutofillHints(View.AUTOFILL_HINT_USERNAME)
+            importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_YES
+            imeOptions = EditorInfo.IME_ACTION_NEXT
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                isCredential = true
+            }
+        }
         val password = field("Mot de passe").apply {
+            id = View.generateViewId()
             inputType = android.text.InputType.TYPE_CLASS_TEXT or
                 android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+            setAutofillHints(View.AUTOFILL_HINT_PASSWORD)
+            importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_YES
+            imeOptions = EditorInfo.IME_ACTION_DONE
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                isCredential = true
+            }
+        }
+        login.nextFocusForwardId = password.id
+        login.nextFocusDownId = password.id
+        login.setOnEditorActionListener { _, actionId, keyEvent ->
+            if (actionId == EditorInfo.IME_ACTION_NEXT ||
+                (keyEvent?.keyCode == KeyEvent.KEYCODE_ENTER &&
+                    keyEvent.action == KeyEvent.ACTION_DOWN)) {
+                password.requestFocus()
+                true
+            } else {
+                false
+            }
         }
         put(loginCard, labelledInput("Adresse du serveur", address), 14)
         put(loginCard, labelledInput("Nom d'utilisateur", login), 14)
@@ -809,17 +854,19 @@ class MainActivity : AppCompatActivity() {
             ), 15)
         }
 
-        put(loginCard, button("→  Se connecter") {
+        val submitLogin: () -> Unit = submit@{
             val given = normalizedServer(address.text.toString())
             if (given == null) {
                 showMessage("Indique une adresse HTTP(S) valide.")
-                return@button
+                return@submit
             }
             val username = login.text.toString().trim()
             val passwordValue = password.text.toString()
             if (username.isBlank() || passwordValue.isBlank()) {
                 showMessage("Renseigne ton identifiant et ton mot de passe.")
-                return@button
+                if (username.isBlank()) login.requestFocus()
+                else password.requestFocus()
+                return@submit
             }
             if (given != server) {
                 synchronized(cookies) { cookies.clear() }
@@ -834,10 +881,22 @@ class MainActivity : AppCompatActivity() {
             val biometricRequested = fingerprintAvailable && enrollCheckbox.isChecked
             if (biometricRequested && !server.startsWith("https://", true)) {
                 showMessage("Désactive l'empreinte ou utilise une adresse HTTPS.")
-                return@button
+                return@submit
             }
-            signIn(username, passwordValue, biometricRequested)
-        }, 9)
+            signIn(username, passwordValue, biometricRequested, allowAutofillSave = true)
+        }
+        password.setOnEditorActionListener { _, actionId, keyEvent ->
+            if (actionId == EditorInfo.IME_ACTION_DONE ||
+                actionId == EditorInfo.IME_ACTION_GO ||
+                (keyEvent?.keyCode == KeyEvent.KEYCODE_ENTER &&
+                    keyEvent.action == KeyEvent.ACTION_DOWN)) {
+                submitLogin()
+                true
+            } else {
+                false
+            }
+        }
+        put(loginCard, button("→  Se connecter") { submitLogin() }, 9)
 
         val savedUser = biometricLogin.savedUser(server)
         if (fingerprintAvailable && savedUser != null) {

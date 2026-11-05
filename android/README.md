@@ -1,4 +1,4 @@
-# AceStream TV pour Android — version 1.4.1
+# AceStream TV pour Android — version 1.4.2
 
 Application **Android native** (Kotlin, vues Android AppCompat + Media3), privée et sans Play Store. L'interface reprend l'identité graphique d'AceStream Web : fond marine sombre, cartes arrondies, contours subtils, boutons violets dégradés et navigation fixe à quatre onglets et raccourci Paramètres en haut à droite.
 
@@ -49,3 +49,11 @@ L'application requiert Android 8 ou plus récent, l'accès réseau à ton serveu
 - **Centrage du triangle Play** : retrait du décalage horizontal de 3 dp appliqué à l'ImageView et recentrage de la boîte englobante de la forme vectorielle (`x = 5,7` à `18,3` sur un viewport de 24). Le cercle de 58 dp reste inchangé.
 - **Empreinte automatiquement à l'ouverture** : quand les identifiants biométriques sont déjà enregistrés pour l'adresse du serveur, Android affiche immédiatement le dialogue biométrique après l'ouverture de l'écran Connexion et le passage de l'activité à l'état Resumed. Aucun bouton supplémentaire à toucher. Si la personne annule, le formulaire classique reste utilisable, sans relance automatique en boucle. Un changement d'onglet, la sortie du PiP ou le retour des paramètres ne redéclenchent pas la demande. Le bouton manuel reste disponible.
 - Aucune modification du serveur ou de Docker Compose. Les identifiants restent chiffrés avec le Keystore Android et nécessitent toujours une reconnaissance biométrique forte. Le dialogue automatique ne survient qu'au démarrage de l'activité sur l'écran Connexion (pas à chaque simple retour depuis l'écran d'accueil si la session est déjà active).
+
+## Android 1.4.2 — Proton Pass et clavier
+
+- **Autofill Android / Proton Pass** : les vrais champs de connexion portent les hints `username` et `password`, sont identifiés comme credentials sur Android 14+, et disposent d'identifiants de vue stables pour la session. L'adresse du serveur n'est pas enregistrée comme identifiant de compte par le fournisseur. Après une authentification classique acceptée par le serveur, `AutofillManager.commit()` termine le contexte de saisie et laisse Android / Proton Pass décider d'afficher sa proposition **Enregistrer**. L'application ne sauvegarde pas ces identifiants en clair.
+- **Navigation clavier** : le champ utilisateur présente la touche **Suivant** ; valider ce champ déplace le curseur dans le mot de passe sans envoyer la connexion. Le champ mot de passe présente la touche **Terminé**, qui envoie le même formulaire que le bouton Se connecter.
+- **Empreinte** : connexion biométrique Keystore inchangée, distincte du système Android Autofill. Pas de demande d'enregistrement Proton Pass lorsque la connexion passe par l'empreinte, car le formulaire n'est pas rempli.
+- **Sur Samsung** : activer `Proton Pass → Profil → Autofill` et sélectionner Proton Pass comme service d'autoremplissage par défaut. L'apparition du dialogue d'enregistrement est contrôlée par Android / Proton Pass, et ne peut pas être imposée par une application tierce.
+
