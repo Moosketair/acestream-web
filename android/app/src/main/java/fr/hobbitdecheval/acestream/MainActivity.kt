@@ -1,6 +1,15 @@
 package fr.hobbitdecheval.acestream
 
 import android.app.Activity
+import androidx.appcompat.app.AppCompatActivity
+import androidx.mediarouter.app.MediaRouteButton
+import com.google.android.gms.cast.MediaInfo
+import com.google.android.gms.cast.MediaMetadata
+import com.google.android.gms.cast.framework.CastButtonFactory
+import com.google.android.gms.cast.framework.CastContext
+import com.google.android.gms.cast.framework.CastSession
+import com.google.android.gms.cast.framework.SessionManagerListener
+import com.google.android.gms.cast.MediaLoadRequestData
 import android.app.PictureInPictureParams
 import android.content.res.ColorStateList
 import android.content.pm.ActivityInfo
@@ -34,7 +43,7 @@ import java.util.concurrent.TimeUnit
 
 data class StreamItem(val name: String, val ref: String, val id: Int = 0, val category: String = "")
 
-class MainActivity : Activity() {
+class MainActivity : AppCompatActivity() {
     private val purple = Color.rgb(142, 112, 239)
     private val bg = Color.rgb(9, 14, 27)
     private val panel = Color.rgb(21, 32, 52)
@@ -50,6 +59,10 @@ class MainActivity : Activity() {
     private var query = ""
     private var searchSource = "site"
     private var results = listOf<StreamItem>()
+    private var castContext: CastContext? = null
+    private var castListener: SessionManagerListener<CastSession>? = null
+    private var castRequestPending = false
+    private var castedStreamId = ""
     private lateinit var client: OkHttpClient
     private lateinit var player: ExoPlayer
     private lateinit var root: LinearLayout
@@ -79,7 +92,96 @@ class MainActivity : Activity() {
                 runOnUiThread { showMessage("Lecture impossible : " + error.message.orEmpty()) }
             }
         })
+        initializeCast()
         showLogin()
+    }
+
+    private fun initializeCast() {
+        try {
+            val context = CastContext.getSharedInstance(this)
+            castContext = context
+            val listener = object : SessionManagerListener<CastSession> {
+                override fun onSessionStarting(session: CastSession) {}
+                override fun onSessionStarted(session: CastSession, sessionId: String) {
+                    if (activeStream.isNotBlank()) castActiveStream()
+                    else showMessage("Chromecast connecté : lancez un flux.")
+                }
+                override fun onSessionStartFailed(session: CastSession, error: Int) {
+                    showMessage("Connexion Chromecast impossible (code " + error + ").")
+                }
+                override fun onSessionEnding(session: CastSession) {}
+                override fun onSessionEnded(session: CastSession, error: Int) {
+                    castedStreamId = ""
+                    showMessage("Chromecast déconnecté. Lecture locale disponible.")
+                }
+                override fun onSessionResuming(session: CastSession, sessionId: String) {}
+                override fun onSessionResumed(session: CastSession, wasSuspended: Boolean) {
+                    if (activeStream.isNotBlank()) castActiveStream()
+                }
+                override fun onSessionResumeFailed(session: CastSession, error: Int) {}
+                override fun onSessionSuspended(session: CastSession, reason: Int) {}
+            }
+            castListener = listener
+            context.sessionManager.addSessionManagerListener(listener, CastSession::class.java)
+        } catch (_: Exception) {
+            // Google Play Services is optional. Local HLS playback still works.
+            castContext = null
+        }
+    }
+
+    private fun castActiveStream() {
+        val sid = activeStream
+        if (sid.isBlank() || castRequestPending) return
+        if (castContext?.sessionManager?.currentCastSession?.isConnected != true) {
+            showMessage("Appuie d'abord sur l'icône Cast pour choisir ton Chromecast.")
+            return
+        }
+        castRequestPending = true
+        showMessage("Préparation du lien Chromecast sécurisé…")
+        executor.execute {
+            try {
+                val relative = request("/api/streams/" + sid + "/cast-link", "POST", JSONObject())
+                    .optString("url")
+                if (!relative.startsWith("/cast/") || !relative.endsWith("/index.m3u8")) {
+                    throw IllegalStateException("Lien de diffusion TV invalide.")
+                }
+                val castUrl = server + relative
+                runOnUiThread {
+                    castRequestPending = false
+                    if (activeStream != sid) return@runOnUiThread
+                    val session = castContext?.sessionManager?.currentCastSession
+                    val remote = session?.remoteMediaClient
+                    if (session?.isConnected != true || remote == null) {
+                        showMessage("Chromecast déconnecté avant le démarrage.")
+                        return@runOnUiThread
+                    }
+                    val metadata = MediaMetadata(MediaMetadata.MEDIA_TYPE_GENERIC).apply {
+                        putString(MediaMetadata.KEY_TITLE, activeName.ifBlank { "AceStream TV" })
+                    }
+                    val media = MediaInfo.Builder(castUrl)
+                        .setContentType("application/x-mpegURL")
+                        .setStreamType(MediaInfo.STREAM_TYPE_LIVE)
+                        .setMetadata(metadata)
+                        .build()
+                    remote.load(MediaLoadRequestData.Builder()
+                        .setMediaInfo(media).setAutoplay(true).build())
+                        .setResultCallback { result ->
+                            if (result.status.isSuccess && activeStream == sid) {
+                                castedStreamId = sid
+                                player.pause()
+                                showMessage("Diffusion en cours sur Chromecast.")
+                            } else {
+                                showMessage("Le Chromecast n'a pas pu ouvrir le flux HLS.")
+                            }
+                        }
+                }
+            } catch (error: Exception) {
+                runOnUiThread {
+                    castRequestPending = false
+                    showMessage("Cast indisponible : " + (error.message ?: "Erreur réseau"))
+                }
+            }
+        }
     }
 
     private fun request(path: String, method: String = "GET", data: JSONObject? = null): JSONObject {
@@ -140,10 +242,25 @@ class MainActivity : Activity() {
     private fun setup(title: String, navigation: Boolean = true) {
         root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(bg) }
         setContentView(root)
-        root.addView(text("▶ AceStream TV", 23f).apply {
-            setPadding(20, 24, 12, 15)
+        val header = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        header.addView(text("▶ AceStream TV", 23f).apply {
+            setPadding(16, 20, 8, 14)
             setTextColor(purple)
-        })
+        }, LinearLayout.LayoutParams(0, 62, 1f))
+        if (navigation) {
+            if (castContext != null) {
+                try {
+                    val castButton = MediaRouteButton(this).apply {
+                        contentDescription = "Choisir un Chromecast"
+                    }
+                    CastButtonFactory.setUpMediaRouteButton(applicationContext, castButton)
+                    header.addView(castButton, LinearLayout.LayoutParams(55, 58))
+                } catch (_: Exception) { /* Cast unavailable: native player still works. */ }
+            }
+            header.addView(button("⚙") { showServerSettings() },
+                LinearLayout.LayoutParams(54, 58))
+        }
+        root.addView(header)
         if (navigation) {
             val bar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
             for ((label, section) in listOf("▶" to 0, "⌕" to 1, "★" to 2, "◷" to 3, "VPN" to 4)) {
@@ -178,6 +295,43 @@ class MainActivity : Activity() {
         })
     }
 
+    private fun normalizedServer(value: String): String? {
+        val candidate = value.trim().trimEnd('/')
+        val url = candidate.toHttpUrlOrNull() ?: return null
+        if (url.scheme != "https" && url.scheme != "http") return null
+        if (url.username.isNotEmpty() || url.password.isNotEmpty() || url.query != null || url.fragment != null) return null
+        return candidate
+    }
+
+    private fun showServerSettings() {
+        setup("Paramètres du serveur")
+        val address = field("Adresse HTTP(S) du serveur", server)
+        addBox(text("Adresse utilisée pour la connexion et le Chromecast.\nExemple : https://ace.hobbit-de-cheval.fr", 13f).apply { setTextColor(muted) })
+        addBox(address)
+        addBox(button("✓ Enregistrer l'adresse") {
+            val value = normalizedServer(address.text.toString())
+            if (value == null) {
+                showMessage("Adresse invalide : utilisez http:// ou https://.")
+                return@button
+            }
+            if (value == server) {
+                showMessage("Adresse déjà enregistrée.")
+                return@button
+            }
+            if (activeStream.isNotBlank()) {
+                showMessage("Arrête d'abord la lecture avant de changer de serveur.")
+                return@button
+            }
+            server = value
+            synchronized(cookies) { cookies.clear() }
+            csrf = ""
+            user = ""
+            getSharedPreferences("acestream", MODE_PRIVATE).edit().putString("server", server).apply()
+            showLogin()
+        })
+        addBox(button("Retour au lecteur") { showPlayer() })
+    }
+
     private fun showLogin() {
         setup("Connexion à ton serveur", navigation = false)
         val address = field("Adresse du serveur", server)
@@ -187,9 +341,8 @@ class MainActivity : Activity() {
         }
         addBox(address); addBox(login); addBox(password)
         addBox(button("Se connecter") {
-            val given = address.text.toString().trim().trimEnd('/')
-            val valid = given.toHttpUrlOrNull()
-            if (valid == null || (valid.scheme != "https" && valid.scheme != "http")) {
+            val given = normalizedServer(address.text.toString())
+            if (given == null) {
                 showMessage("Indique une adresse HTTP(S) valide.")
                 return@button
             }
@@ -220,6 +373,12 @@ class MainActivity : Activity() {
         content.addView(screen, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (w * 9f / 16f).toInt()))
         addBox(button("⛶ Plein écran paysage") { requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE })
         addBox(button("▣ Mini-lecteur (PiP)") { enterPip() })
+        if (castContext != null) {
+            addBox(text("Chromecast : utilise l'icône Cast en haut à droite pour choisir ta TV.", 13f).apply {
+                setTextColor(muted)
+            })
+            addBox(button("Caster la lecture en cours") { castActiveStream() })
+        }
         val manual = field("Content ID ou lien AceStream")
         addBox(manual)
         addBox(button("▶ Lire") {
@@ -245,11 +404,17 @@ class MainActivity : Activity() {
             activeName = item.name
             val playlist = server + result.getString("playlist")
             runOnUiThread {
-                player.setMediaItem(MediaItem.Builder()
-                    .setUri(playlist).setMimeType(MimeTypes.APPLICATION_M3U8).build())
-                player.prepare()
-                player.playWhenReady = true
-                showMessage("Lecture en préparation…")
+                if (castContext?.sessionManager?.currentCastSession?.isConnected == true) {
+                    player.stop()
+                    player.clearMediaItems()
+                    castActiveStream()
+                } else {
+                    player.setMediaItem(MediaItem.Builder()
+                        .setUri(playlist).setMimeType(MimeTypes.APPLICATION_M3U8).build())
+                    player.prepare()
+                    player.playWhenReady = true
+                    showMessage("Lecture en préparation…")
+                }
                 if (Build.VERSION.SDK_INT >= 31) {
                     try {
                         setPictureInPictureParams(PictureInPictureParams.Builder()
@@ -266,6 +431,10 @@ class MainActivity : Activity() {
         activeName = ""
         player.stop()
         player.clearMediaItems()
+        if (castedStreamId == old && old.isNotBlank()) {
+            castContext?.sessionManager?.currentCastSession?.remoteMediaClient?.stop()
+        }
+        castedStreamId = ""
         showMessage("Lecture arrêtée")
         if (old.isNotBlank()) background { request("/api/streams/" + old, "DELETE") }
     }
@@ -417,6 +586,9 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        castListener?.let { listener ->
+            castContext?.sessionManager?.removeSessionManagerListener(listener, CastSession::class.java)
+        }
         player.release()
         executor.shutdownNow()
         super.onDestroy()
