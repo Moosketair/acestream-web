@@ -9,8 +9,8 @@ android {
         applicationId = "fr.hobbitdecheval.acestream"
         minSdk = 26
         targetSdk = 35
-        versionCode = 7
-        versionName = "1.4.2"
+        versionCode = 8
+        versionName = "1.4.3"
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

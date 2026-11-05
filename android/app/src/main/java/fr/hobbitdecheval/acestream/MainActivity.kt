@@ -1458,25 +1458,40 @@ class MainActivity : AppCompatActivity() {
             player = this@MainActivity.player
             useController = true
             controllerShowTimeoutMs = 4500
+            // The fullscreen overlay must start clean. A tap on the video
+            // displays both the Media3 controls and our exit arrow.
+            controllerAutoShow = false
             setBackgroundColor(Color.BLACK)
             resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
         }
         playerView = video
         fullscreenFrame.addView(video, FrameLayout.LayoutParams(-1, -1))
 
-        // An on-screen exit control is mandatory: system bars and Back
-        // gestures are deliberately hidden while watching video.
-        val back = secondary("←  Retour au menu", true) { exitFullscreen() }.apply {
-            contentDescription = "Quitter le plein écran et retrouver les onglets"
-            background = AceDesign.fill(Color.rgb(24, 32, 52), 11,
+        // The exit arrow mirrors the native Media3 controller visibility,
+        // instead of staying permanently on top of the video.
+        val back = ImageView(this).apply {
+            setImageResource(R.drawable.ic_fullscreen_back)
+            contentDescription = "Retour au menu"
+            setPadding(d(12), d(12), d(12), d(12))
+            background = AceDesign.fill(Color.argb(190, 24, 32, 52), 40,
                 AceDesign.border, this@MainActivity)
+            visibility = View.GONE
+            isClickable = true
+            isFocusable = true
+            setOnClickListener { exitFullscreen() }
         }
-        val backParams = FrameLayout.LayoutParams(-2, d(48),
+        val backParams = FrameLayout.LayoutParams(d(48), d(48),
             Gravity.TOP or Gravity.START).apply {
             leftMargin = d(14)
             topMargin = d(14)
         }
         fullscreenFrame.addView(back, backParams)
+
+        video.setControllerVisibilityListener(
+            PlayerView.ControllerVisibilityListener { visibility ->
+                back.visibility = if (visibility == View.VISIBLE) View.VISIBLE else View.GONE
+            }
+        )
         ViewCompat.setOnApplyWindowInsetsListener(fullscreenFrame) { _, insets ->
             // Keep the exit button outside the notch/cutout, but let the
             // video itself occupy the screen edge-to-edge.
@@ -1492,6 +1507,10 @@ class MainActivity : AppCompatActivity() {
             insets
         }
         setContentView(fullscreenFrame)
+        // Hide the controller initially; its first user tap reveals the
+        // icon-only arrow together with Play/Pause and seek controls.
+        video.hideController()
+        back.visibility = View.GONE
         hideSystemBars()
         ViewCompat.requestApplyInsets(fullscreenFrame)
         updatePlaybackState()

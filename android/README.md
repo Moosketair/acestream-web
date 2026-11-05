@@ -1,4 +1,4 @@
-# AceStream TV pour Android — version 1.4.2
+# AceStream TV pour Android — version 1.4.3
 
 Application **Android native** (Kotlin, vues Android AppCompat + Media3), privée et sans Play Store. L'interface reprend l'identité graphique d'AceStream Web : fond marine sombre, cartes arrondies, contours subtils, boutons violets dégradés et navigation fixe à quatre onglets et raccourci Paramètres en haut à droite.
 
@@ -56,4 +56,12 @@ L'application requiert Android 8 ou plus récent, l'accès réseau à ton serveu
 - **Navigation clavier** : le champ utilisateur présente la touche **Suivant** ; valider ce champ déplace le curseur dans le mot de passe sans envoyer la connexion. Le champ mot de passe présente la touche **Terminé**, qui envoie le même formulaire que le bouton Se connecter.
 - **Empreinte** : connexion biométrique Keystore inchangée, distincte du système Android Autofill. Pas de demande d'enregistrement Proton Pass lorsque la connexion passe par l'empreinte, car le formulaire n'est pas rempli.
 - **Sur Samsung** : activer `Proton Pass → Profil → Autofill` et sélectionner Proton Pass comme service d'autoremplissage par défaut. L'apparition du dialogue d'enregistrement est contrôlée par Android / Proton Pass, et ne peut pas être imposée par une application tierce.
+
+
+## Correctif Android 1.4.3 — Bouton Retour en plein écran
+
+- Remplacement de « ← Retour au menu » par une seule flèche blanche dans un bouton circulaire discret de 48 dp en haut à gauche.
+- L'icône est masquée à l'entrée du mode plein écran et ne devient visible **que lorsque les commandes Media3 apparaissent** après un appui sur la vidéo. Elle disparaît en même temps que les commandes (ou après leur temporisation normale de 4,5 secondes).
+- Un appui sur la flèche revient aux onglets sans arrêter le flux. Le geste Android **Retour** conserve également son rôle de sortie du plein écran.
+- Le positionnement tient toujours compte des découpes/notchs et les barres système restent masquées pendant le plein écran. Les autres pages Android, le lecteur et le PiP ne sont pas modifiés.
 
