@@ -78,6 +78,11 @@ def create_app(config=None):
     login_lock = threading.Lock()
     vpn_cache = {"time": 0, "value": None}
     vpn_lock = threading.Lock()
+    # Short-lived bearer links, invalidated by a container restart.
+    cast_links = {}
+    cast_lock = threading.Lock()
+    cast_ttl = 3 * 60 * 60
+    app.extensions["cast_links"] = cast_links
 
     def database():
         if "db" not in g:
@@ -139,7 +144,7 @@ def create_app(config=None):
             "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; "
             "style-src 'self'; img-src 'self' data:; connect-src 'self'; "
             "media-src 'self' blob:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
-        if request.path.startswith("/api/") or request.path.startswith("/hls/"):
+        if request.path.startswith(("/api/", "/hls/", "/cast/")):
             response.headers["Cache-Control"] = "no-store"
         return response
 
@@ -523,6 +528,10 @@ def create_app(config=None):
         if not manager.owned(sid, user["id"], user["role"] == "admin"):
             return jsonify(error="Flux introuvable."), 404
         manager.stop(sid)
+        with cast_lock:
+            for key, value in list(cast_links.items()):
+                if value["sid"] == sid:
+                    cast_links.pop(key, None)
         return jsonify(success=True)
 
     def stream_owned_or_404(sid):
@@ -531,6 +540,60 @@ def create_app(config=None):
         if not item:
             abort(404)
         return item
+
+    @app.post("/api/streams/<sid>/cast-link")
+    @logged_in
+    def issue_cast_link(sid):
+        user = current_user()
+        item = manager.owned(sid, user["id"], user["role"] == "admin")
+        if not item or item["process"].poll() is not None:
+            return jsonify(error="Lancez d'abord un flux actif."), 404
+        if not vpn_status(refresh=True)["connected"]:
+            return jsonify(error="VPN déconnecté : diffusion TV désactivée."), 503
+        now = time.time()
+        token = secrets.token_urlsafe(32)
+        with cast_lock:
+            for key, value in list(cast_links.items()):
+                if value["expires"] <= now or value["sid"] == sid:
+                    cast_links.pop(key, None)
+            cast_links[token] = {
+                "sid": sid, "owner": item["owner"], "expires": now + cast_ttl
+            }
+        return jsonify(url=f"/cast/{token}/index.m3u8", expires_in=cast_ttl)
+
+    def valid_cast_item_or_404(token):
+        now = time.time()
+        with cast_lock:
+            value = cast_links.get(token)
+            if value and value["expires"] <= now:
+                cast_links.pop(token, None)
+                value = None
+        if not value:
+            abort(404)
+        item = manager.owned(value["sid"], value["owner"])
+        if not item or item["process"].poll() is not None:
+            abort(404)
+        if not vpn_status()["connected"]:
+            abort(503)
+        return item
+
+    @app.get("/cast/<token>/index.m3u8")
+    def cast_manifest(token):
+        item = valid_cast_item_or_404(token)
+        manifest_file = item["directory"] / "index.m3u8"
+        if not manifest_file.is_file():
+            abort(404)
+        return send_file(manifest_file,
+                         mimetype="application/vnd.apple.mpegurl",
+                         conditional=False)
+
+    @app.get("/cast/<token>/<filename>")
+    def cast_segment(token, filename):
+        import re
+        if not re.fullmatch(r"index\\d+\\.ts", filename):
+            abort(404)
+        item = valid_cast_item_or_404(token)
+        return send_from_directory(item["directory"], filename, max_age=0)
 
     @app.get("/hls/<sid>/index.m3u8")
     def manifest(sid):
