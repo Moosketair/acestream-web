@@ -319,7 +319,7 @@ class MainActivity : AppCompatActivity() {
             orientation = LinearLayout.VERTICAL
             setPadding(d(16), d(if (navigation) 21 else 24), d(16), d(25))
         }
-        scroller.addView(content, ScrollView.LayoutParams(-1, -2))
+        scroller.addView(content, FrameLayout.LayoutParams(-1, -2))
         root.addView(scroller, LinearLayout.LayoutParams(-1, 0, 1f))
 
         if (navigation) {
