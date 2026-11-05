@@ -3,7 +3,8 @@
  <uses-permission android:name="android.permission.INTERNET"/>
  <uses-feature android:name="android.software.picture_in_picture" android:required="false"/>
  <application android:allowBackup="false" android:usesCleartextTraffic="true"
-    android:label="AceStream TV" android:theme="@style/Theme.AppCompat.DayNight.NoActionBar">
+    android:label="AceStream TV" android:theme="@style/Theme.AceStreamTV"
+    android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher_round">
   <meta-data android:name="com.google.android.gms.cast.framework.OPTIONS_PROVIDER_CLASS_NAME"
       android:value="fr.hobbitdecheval.acestream.CastOptionsProvider"/>
   <activity android:name=".MainActivity" android:exported="true"

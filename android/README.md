@@ -1,22 +1,23 @@
-# AceStream TV — Android natif
+# AceStream TV pour Android — version 1.2.0
 
-Application Android native utilisant ton serveur AceStream Web, sans publication Play Store.
+Application **Android native** (Kotlin, vues Android AppCompat + Media3), privée et sans Play Store. L'interface reprend l'identité graphique d'AceStream Web : fond marine sombre, cartes arrondies, contours subtils, boutons violets dégradés et navigation fixe à cinq onglets.
 
-## Version 1.1 — Chromecast et serveur configurable
+## Nouveautés de la version 1.2
 
-- Sur la page de **connexion**, modifie l'adresse du serveur. Elle est mémorisée.
-- Une fois connecté, touche **⚙ en haut à droite** pour accéder aux paramètres et changer le serveur. Arrête un flux en cours avant de changer d'adresse.
-- Le bouton **Cast** en haut à droite détecte les Chromecast / Google TV du même réseau. Sélectionne un appareil, puis lance un flux ; ou connecte le Chromecast pendant une lecture.
-- La lecture est envoyée au **Google Cast Default Media Receiver**, sans compte développeur ni application réceptrice personnalisée. C'est un véritable transfert HLS, pas une duplication d'écran.
-- Le serveur produit un lien d'accès spécifique, temporaire et révocable via `POST /api/streams/<stream_id>/cast-link`. Il ne communique pas tes cookies ou ton mot de passe au Chromecast.
-- Le téléphone et le Chromecast doivent pouvoir joindre **l'adresse du serveur**. Le HTTPS avec un nom de domaine valide est recommandé. Les adresses locales ou DNS privés ne sont pas toujours joignables par les appareils Cast.
-- Il faut un appareil avec **Google Play Services**, et un Chromecast/Google TV compatible. Pour un téléviseur Apple TV, Google Cast n'est pas équivalent à AirPlay.
-- Le lecteur Media3, les favoris, la recherche et le Picture-in-Picture restent disponibles.
+- **Écran de connexion** repensé avec logo original, formulaire sombre, adresse serveur configurable et mémorisée.
+- **Tableau de bord** avec lecteur Media3 natif, lecture manuelle, boutons plein écran et PiP, accès rapide Recherche et Favoris, panneaux d'état VPN/engine/diffusion (valeurs récupérées depuis le serveur).
+- **Recherche** : quatre sources, affichage en cartes homogènes, effacement des résultats, actions Lire et Favori.
+- **Favoris / Historique** avec les données réelles de ton compte AceStream Web.
+- **Paramètres** : changement de serveur, informations système et changement de compte.
+- **Chromecast** (Google Cast) conservé : bouton dans la barre d'en-tête et lien HLS temporaire généré par le serveur.
+- **Icône Android adaptative** avec dégradé violet/bleu, icône monochrome Android 13+, écran de démarrage natif Android 12+, et logo de l'interface Web réutilisé dans les écrans.
+- Les médias affichés dans la maquette étaient des **illustrations de design** : l'API de recherche ne fournit pas de miniatures d'événements, de résolution ou de débit vérifiés. L'application montre les vrais noms, catégories et flux, sans inventer ces métadonnées.
 
-## Installation
+## Compiler et télécharger
 
-Depuis GitHub Actions, ouvre **Build native Android APK**, télécharge l'artifact `AceStream-TV-Android-APK`, décompresse le ZIP et installe l'APK.
+Lancer ou consulter [Build native Android APK](https://github.com/Moosketair/acestream-web/actions/workflows/android-apk.yml). Après une compilation réussie, télécharger l'artefact `AceStream-TV-Android-APK`, décompresser le ZIP, puis installer `AceStream-TV-Android.apk`.
 
-L'APK GitHub Actions est un **debug APK signé avec une clé éphémère du runner**. Si tu as installé l'APK précédent et qu'Android refuse cette version avec une erreur de signature, désinstalle l'ancienne APK puis installe celle-ci. Tes favoris et comptes restent sauvegardés sur le serveur, mais les préférences locales seront réinitialisées.
+L'APK GitHub est **une version debug signée automatiquement**, réservée à un usage privé. Si Android refuse une mise à jour à cause d'une signature différente, désinstalle l'ancienne application avant d'installer la nouvelle. Les comptes et favoris restent sur le serveur ; les préférences locales, dont l'adresse enregistrée, seront effacées à la désinstallation.
 
-Le streaming reste effectué par AceStream Web + FFmpeg sur le serveur Debian ; aucun VPN P2P ne tourne sur le téléphone.
+L'application requiert Android 8 ou plus récent, l'accès réseau à ton serveur AceStream Web, et Google Play Services pour Google Cast. Aucune modification Docker n'est requise. La vidéo P2P reste traitée sur Debian derrière Gluetun/ProtonVPN ; le téléphone lit du HLS.
+

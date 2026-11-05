@@ -1,0 +1,1 @@
+<resources><style name="Theme.AceStreamTV" parent="Theme.AppCompat.DayNight.NoActionBar"><item name="android:windowLightStatusBar">false</item><item name="android:statusBarColor">#0B1121</item><item name="android:navigationBarColor">#090E1B</item><item name="colorAccent">#8D71F5</item><item name="android:windowActionModeOverlay">true</item></style></resources>
